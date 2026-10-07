@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["electron", "server", "scripts"],
+  "//": "Las sondas probe* son diagnosticos desechables: llevan codigo del contexto del navegador dentro de cadenas, asi que no tienen sentido bajo el typecheck del proceso de Node.",
+  "exclude": ["scripts/probe.ts", "scripts/probe-api.ts", "scripts/probe-dom.ts", "scripts/probe-stealth.ts", "scripts/probe-vimeos.ts"]
+}

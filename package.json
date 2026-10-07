@@ -1,0 +1,108 @@
+{
+  "name": "miso",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Buscador federado local para ver contenido",
+  "homepage": "https://github.com/miso-app/miso",
+  "author": {
+    "name": "Enmanuel Pirela",
+    "email": "enmanuelpirela400@gmail.com"
+  },
+  "type": "module",
+  "main": "dist/electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build:web && npm run build:server && npm run build:electron",
+    "check": "npm run check:encoding && npm run check:parsers",
+    "check:encoding": "esbuild scripts/check-encoding.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-encoding.mjs --log-level=warning && node dist/tools/check-encoding.mjs",
+    "check:parsers": "esbuild scripts/check-parsers.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-parsers.mjs --log-level=warning && node dist/tools/check-parsers.mjs",
+    "check:arranque": "esbuild scripts/check-arranque.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-arranque.mjs --log-level=warning && node dist/tools/check-arranque.mjs",
+    "check:extract": "esbuild scripts/check-extract.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-extract.mjs --log-level=warning && node dist/tools/check-extract.mjs",
+    "check:vivo": "esbuild scripts/check-vivo.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-vivo.mjs --log-level=warning && node dist/tools/check-vivo.mjs",
+    "build:web": "vite build --config web/vite.config.ts",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server.mjs",
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=cjs --target=node22 --packages=external --outfile=dist/electron/main.cjs --log-level=warning && esbuild electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --packages=external --outfile=dist/electron/preload.cjs --log-level=warning && node scripts/copy-assets.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
+    "start": "electron .",
+    "postinstall:browsers": "playwright install chromium"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^4.21.2",
+    "hls.js": "^1.5.20",
+    "playwright-core": "^1.50.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.3.0",
+    "esbuild": "^0.24.2",
+    "electron-builder": "^26.0.12",
+    "playwright": "^1.50.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  },
+  "build": {
+    "appId": "com.miso.desktop",
+    "productName": "Miso",
+    "copyright": "Copyright © 2026 Enmanuel Pirela",
+    "asar": true,
+    "files": [
+      "dist/electron/**/*",
+      "dist/server.mjs",
+      "dist/web/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/tools",
+        "to": "tools"
+      },
+      {
+        "from": "/home/demon0/.cache/ms-playwright/chromium-1243",
+        "to": "playwright/chromium-1243"
+      },
+      {
+        "from": "/home/demon0/.cache/ms-playwright/chromium_headless_shell-1243",
+        "to": "playwright/chromium_headless_shell-1243"
+      }
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist/release"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "category": "Video",
+      "maintainer": "Enmanuel Pirela <enmanuelpirela400@gmail.com>",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Miso"
+    }
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.24.2": true,
+    "esbuild@0.25.12": true
+  }
+}

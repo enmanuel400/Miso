@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Miso</title>
+    <style>
+      /*
+       * Pantalla de arranque de Electron. Existe por un motivo concreto: la
+       * aplicacion se sirve desde su propio servidor, asi que con el servidor
+       * apagado la URL de la interfaz no carga y la ventana se queda en la
+       * pagina de error de Chromium. Esta pagina se lee del disco, y por eso si
+       * se puede mostrar precisamente cuando no hay servidor.
+       *
+       * El boton vive aqui y no en la aplicacion web porque la aplicacion web,
+       * para cuando se podria pulsar su boton, ya tiene servidor. Esta pantalla
+       * es el unico sitio donde se puede arrancar uno.
+       *
+       * Va sin ficheros externos a proposito: si dependiera de un CSS o una
+       * fuente que sirven por HTTP, fallarian en el mismo instante que sirve
+       * para algo.
+       */
+      :root {
+        color-scheme: dark;
+        --fondo: #0b0b0d;
+        --texto: #e8e8ea;
+        --tenue: #8b8b93;
+        --linea: #26262c;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: var(--fondo);
+        color: var(--texto);
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .centro {
+        display: grid;
+        justify-items: center;
+        gap: 14px;
+        width: min(420px, 84vw);
+        text-align: center;
+      }
+
+      .marca {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.34em;
+        text-transform: uppercase;
+      }
+
+      .logo {
+        color: #c9a227;
+      }
+
+      .lema {
+        margin: 0;
+        color: var(--tenue);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .error {
+        margin: 0;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: #d98a8a;
+      }
+
+      .oculto {
+        display: none;
+      }
+
+      button {
+        margin-top: 4px;
+        min-width: 190px;
+        padding: 10px 20px;
+        border: 1px solid var(--linea);
+        border-radius: 8px;
+        background: #16161a;
+        color: var(--texto);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      button:hover:not(:disabled) {
+        background: #1d1d23;
+        border-color: #34343c;
+      }
+
+      button:disabled {
+        color: var(--tenue);
+        cursor: default;
+      }
+
+      .nota {
+        margin: 0;
+        color: var(--tenue);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .versiones {
+        display: grid;
+        grid-template-columns: repeat(4, auto);
+        gap: 6px 18px;
+        margin: 6px 0 0;
+        padding-top: 14px;
+        border-top: 1px solid var(--linea);
+        color: var(--tenue);
+        font-size: 11px;
+      }
+
+      .versiones div {
+        display: grid;
+        gap: 2px;
+      }
+
+      .versiones dt {
+        margin: 0;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+
+      .versiones dd {
+        margin: 0;
+        color: #b6b6bd;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="centro">
+      <svg class="logo" width="46" height="46" viewBox="14.3 6.7 29.2 29.2" fill="none" aria-hidden="true">
+        <path d="M18.56 14.63 L34.5 24 L18.56 33.38 Z" fill="currentColor" />
+        <path
+          d="M36 9.19 c0.34 2.25 0.94 2.85 3.19 3.19 c-2.25 0.34 -2.85 0.94 -3.19 3.19 c-0.34 -2.25 -0.94 -2.85 -3.19 -3.19 c2.25 -0.34 2.85 -0.94 3.19 -3.19 Z"
+          fill="currentColor"
+        />
+      </svg>
+      <h1 class="marca">Miso</h1>
+      <p class="lema">Busca en varias fuentes y reproduce aquí.</p>
+
+      <p class="error oculto" id="error"></p>
+
+      <button type="button" id="arrancar">Iniciar servidor</button>
+
+      <p class="nota oculto" id="nota">Se abre un navegador sin cabeza la primera vez que busques, no ahora.</p>
+
+      <dl class="versiones oculto" id="versiones">
+        <div>
+          <dt>versión</dt>
+          <dd id="v-app">—</dd>
+        </div>
+        <div>
+          <dt>electron</dt>
+          <dd id="v-electron">—</dd>
+        </div>
+        <div>
+          <dt>chromium</dt>
+          <dd id="v-chrome">—</dd>
+        </div>
+        <div>
+          <dt>node</dt>
+          <dd id="v-node">—</dd>
+        </div>
+      </dl>
+    </div>
+
+    <script>
+      // El puente solo existe dentro de Electron. Si esta pagina se abriera en
+      // un navegador normal no habria nada que arrancar, y conviene decirlo en
+      // vez de dejar un boton que no hace nada.
+      const puente = window.miso;
+      const boton = document.getElementById('arrancar');
+      const error = document.getElementById('error');
+      const nota = document.getElementById('nota');
+
+      function mostrar(elemento, visible) {
+        elemento.classList.toggle('oculto', !visible);
+      }
+
+      if (!puente) {
+        boton.disabled = true;
+        boton.textContent = 'Solo dentro de la aplicación';
+        error.textContent =
+          'Esta pantalla es la puerta de entrada de Miso y necesita la aplicación de escritorio para arrancar el servidor.';
+        mostrar(error, true);
+      } else {
+        // Las versiones se piden una vez y se muestran aunque el arranque falle:
+        // son el dato util para diagnosticar un problema de instalacion.
+        puente
+          .versions()
+          .then((v) => {
+            document.getElementById('v-app').textContent = v.app || '—';
+            document.getElementById('v-electron').textContent = v.electron || '—';
+            document.getElementById('v-chrome').textContent = v.chrome || '—';
+            document.getElementById('v-node').textContent = v.node || '—';
+            mostrar(document.getElementById('versiones'), true);
+          })
+          .catch(() => {});
+
+        // Si el servidor ya esta en marcha cuando se abre la ventana, no hay
+        // nada que decidir: el proceso principal lleva la ventana a la
+        // aplicacion por su cuenta.
+        puente.status().then((s) => {
+          if (s.state === 'apagado') return;
+          if (s.state === 'error') {
+            error.textContent = s.message || 'El servidor no arrancó.';
+            mostrar(error, true);
+          }
+        });
+
+        boton.addEventListener('click', async () => {
+          boton.disabled = true;
+          boton.textContent = 'Arrancando…';
+          mostrar(error, false);
+          mostrar(nota, true);
+
+          try {
+            const s = await puente.start();
+            if (s.state === 'error') {
+              error.textContent = s.message || 'El servidor no arrancó.';
+              mostrar(error, true);
+              boton.disabled = false;
+              boton.textContent = 'Iniciar servidor';
+              mostrar(nota, false);
+            }
+            // Si arranca bien no se hace nada mas aqui: el proceso principal
+            // lleva la ventana a la aplicacion en cuanto ve el estado.
+          } catch (e) {
+            error.textContent = String(e && e.message ? e.message : e);
+            mostrar(error, true);
+            boton.disabled = false;
+            boton.textContent = 'Iniciar servidor';
+            mostrar(nota, false);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

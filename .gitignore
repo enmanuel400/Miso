@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+
+# Artefactos de compilacion y empaquetado
+dist/
+
+# Datos locales de la app (configuracion, logs, cache)
+.miso/
+
+# Registros y temporales
+*.log
+.tmp-*
+uq_*.html
+*.tsbuildinfo
+
+# Sistema
+.DS_Store
+Thumbs.db
