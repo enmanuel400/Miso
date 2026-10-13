@@ -35,12 +35,12 @@ Node local y lo apaga cuando la aplicación se cierra.
 ## Capturas
 
 <p align="center">
-  <img src="docs/screenshots/inicio.png" width="49%" alt="Pantalla de inicio con «Continuar viendo» y los estrenos más recientes" />
-  <img src="docs/screenshots/busqueda.png" width="49%" alt="Búsqueda federada: los mismos resultados de las cuatro fuentes en una sola cuadrícula" />
+  <img src="docs/screenshots/inicio.webp" width="49%" alt="Pantalla de inicio con «Continuar viendo» y los estrenos más recientes" />
+  <img src="docs/screenshots/busqueda.webp" width="49%" alt="Búsqueda federada: los mismos resultados de las cuatro fuentes en una sola cuadrícula" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/ficha.png" width="49%" alt="Ficha de un título con sus servidores disponibles" />
-  <img src="docs/screenshots/reproductor.png" width="49%" alt="Reproductor integrado en la app, sin salir de ella" />
+  <img src="docs/screenshots/ficha.webp" width="49%" alt="Ficha de un título con sus servidores disponibles" />
+  <img src="docs/screenshots/reproductor.webp" width="49%" alt="Reproductor integrado en la app, sin salir de ella" />
 </p>
 
 ## Fuentes soportadas
