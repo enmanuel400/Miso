@@ -1,7 +1,9 @@
 import type {
   AggregatedSearch,
   EpisodeRef,
+  Genre,
   ResolvedStream,
+  SavedTitle,
   ServerStatus,
   SourceMeta,
   TitleResponse,
@@ -121,13 +123,60 @@ export function sources(): Promise<{ sources: SourceMeta[] }> {
   return request('/api/sources');
 }
 
-export function health(): Promise<{ ok: boolean; browser: boolean; memoryMB: number }> {
-  return request('/api/health');
+// -------------------------------------------------------------------- generos
+
+/** El catalogo de generos. No toca las fuentes: es fijo. */
+export function genres(): Promise<{ genres: Genre[] }> {
+  return request('/api/genres');
 }
 
-/** Pide reanudar el trabajo tras una suspension por inactividad. */
-export function wake(): Promise<{ ok: boolean }> {
-  return request('/api/health').then(() => ({ ok: true }));
+/** Un genero federado, con el filtro opcional por tipo. */
+export function byGenre(
+  genero: Genre,
+  kind: 'movie' | 'series' | 'anime' | null,
+  signal: AbortSignal,
+): Promise<AggregatedSearch> {
+  const params = new URLSearchParams({ g: genero.name });
+  if (kind) params.set('kind', kind);
+  return request<AggregatedSearch>(`/api/genre?${params.toString()}`, { signal });
+}
+
+// ------------------------------------------------------------------ biblioteca
+
+export function getLibrary(signal?: AbortSignal): Promise<{
+  history: SavedTitle[];
+  favorites: SavedTitle[];
+}> {
+  return request('/api/library', { signal });
+}
+
+export function pushHistory(entry: SavedTitle): Promise<{ history: SavedTitle[] }> {
+  return request('/api/library/history', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  });
+}
+
+/** Olvida una entrada, o todo el historial si no se da clave. */
+export function dropHistory(key?: string): Promise<{ history: SavedTitle[] }> {
+  const suffix = key ? `?key=${encodeURIComponent(key)}` : '';
+  return request(`/api/library/history${suffix}`, { method: 'DELETE' });
+}
+
+export function favorite(entry: SavedTitle): Promise<{
+  favorited: boolean;
+  favorites: SavedTitle[];
+}> {
+  return request('/api/library/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  });
+}
+
+export function health(): Promise<{ ok: boolean; browser: boolean; memoryMB: number }> {
+  return request('/api/health');
 }
 
 export function shutdownServer(): Promise<{ ok: boolean }> {
@@ -144,22 +193,8 @@ export function shutdownServer(): Promise<{ ok: boolean }> {
 export async function probeStatus(): Promise<ServerStatus> {
   try {
     await health();
-    return {
-      state: 'en-funcionamiento',
-      port: null,
-      pid: null,
-      message: null,
-      suspendInSec: null,
-      stopInSec: null,
-    };
+    return { state: 'en-funcionamiento', port: null, pid: null, message: null };
   } catch {
-    return {
-      state: 'apagado',
-      port: null,
-      pid: null,
-      message: null,
-      suspendInSec: null,
-      stopInSec: null,
-    };
+    return { state: 'apagado', port: null, pid: null, message: null };
   }
 }

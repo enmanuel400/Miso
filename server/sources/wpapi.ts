@@ -19,6 +19,7 @@ import {
   isMissingPoster,
   primerCapitulo,
   sinAnio,
+  sinopsisUtil,
 } from './shared.js';
 import { fetchText } from '../http.js';
 import { cacheGet, cacheSet } from '../cache.js';
@@ -218,6 +219,7 @@ function dePost(
     kind: kindDe(type),
     year: anioDe(post),
     rating: cleanText(post.rating) || null,
+    synopsis: sinopsisUtil(post.overview),
     episode: null,
     note: nota,
   };
@@ -329,7 +331,7 @@ function detalleBase(
     title: sinAnio(post.title) || slug.replace(/-/g, ' '),
     url: urlHumana(domain, type, slug),
     poster: isMissingPoster(poster) ? null : poster,
-    synopsis: cleanText(post.overview) || null,
+    synopsis: sinopsisUtil(post.overview),
     year: anioDe(post),
     kind: kindDe(type),
     servers: [],
@@ -493,6 +495,51 @@ export function crearFuenteWpApi(meta: SourceMeta, domains: string[]): SourceAda
         listado(domain, 'tvshows', mitad, meta).catch(() => [] as SearchResult[]),
       ]);
       return entrelazar(peliculas, series).slice(0, limit);
+    },
+
+    /**
+     * Genero, por la taxonomia.
+     *
+     * Estos sitios no filtran la busqueda por genero: hay un endpoint propio,
+     * `taxonomies`, que devuelve los posts de un termino con la misma forma que
+     * `search`. El termino es el nombre exacto (y con tilde) de la taxonomia
+     * —"Acción", "Bélica"—, que es lo que viaja en `Genre.name`.
+     *
+     * Con `kind` nulo se piden peliculas y series por separado y se entrelazan.
+     * No se pide un tipo "cualquiera": esta API no lo admite, y la alternativa
+     * —pedir uno de los dos— ensenaria solo la mitad del catalogo del genero sin
+     * avisar.
+     */
+    async fetchByGenre(domain, genre, kind, limit) {
+      const tipos: string[] =
+        kind === 'movie'
+          ? ['movies']
+          : kind === 'series'
+            ? ['tvshows']
+            : kind === 'anime'
+              ? ['animes']
+              : ['movies', 'tvshows'];
+
+      const porTipo = await Promise.all(
+        tipos.map(async (type) => {
+          const url =
+            `${api(domain)}/taxonomies?taxonomy=genres&term=${encodeURIComponent(genre.name)}` +
+            `&postType=${type}&postsPerPage=${limit}`;
+          try {
+            const json = await pedirJson<{ posts?: WpPost[] }>(url, domain);
+            const posts = Array.isArray(json.data?.posts) ? json.data!.posts! : [];
+            return posts
+              .map((p) => dePost(p, domain, meta, null))
+              .filter((r): r is SearchResult => r !== null);
+          } catch {
+            return [] as SearchResult[];
+          }
+        }),
+      );
+
+      let mezcla: SearchResult[] = [];
+      for (const lista of porTipo) mezcla = mezcla.length === 0 ? lista : entrelazar(mezcla, lista);
+      return dedupeResults(mezcla);
     },
   };
 }

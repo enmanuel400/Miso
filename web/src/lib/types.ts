@@ -9,15 +9,18 @@ import type {
   AggregatedSearch,
   EpisodeInfo,
   EpisodeRef,
+  Genre,
   MediaKind,
   PlaybackServer,
   ResolvedStream,
+  SavedTitle,
   SearchResult,
   SeriesIndex,
   SeasonInfo,
   SourceId,
   SourceMeta,
   SourceStatus,
+  TitleCard,
   TitleDetail,
 } from '../../../server/sources/types.js';
 
@@ -29,50 +32,20 @@ export type {
   AggregatedSearch,
   EpisodeInfo,
   EpisodeRef,
+  Genre,
   MediaKind,
   PlaybackServer,
   ResolvedStream,
+  SavedTitle,
   SearchResult,
   SeriesIndex,
   SeasonInfo,
   SourceId,
   SourceMeta,
   SourceStatus,
+  TitleCard,
   TitleDetail,
 };
-
-/**
- * Un titulo unificado, con una entrada por fuente disponible.
- *
- * El mismo nombre aparece en varias fuentes con mucha frecuencia: se midio 23
- * veces sobre 68 resultados de la busqueda "bestia". Mostrarlo tres veces con
- * el mismo cartel solo cambia la insignia de fuente y hace la pantalla mas
- * pobre de lo que es, asi que se agrupa y se muestran todas las fuentes
- * disponibles en la misma tarjeta.
- */
-export interface TitleCard {
-  /** Clave estable para React, derivada de las entradas agrupadas. */
-  key: string;
-  title: string;
-  poster: string | null;
-  kind: TitleCardKind;
-  year: string | null;
-  rating: string | null;
-  /** Una entrada por fuente, en el orden en que las devolvio la busqueda. */
-  entries: SearchResult[];
-  /**
-   * Linea de contexto de la entrada agrupada, si alguna la traia.
-   *
-   * Solo aparece en la pantalla de inicio, donde las entradas no se han buscado
-   * por su nombre y hace falta decir por que estan ahi: "T9E9 · Saluda a tus
-   * Morts" en un capitulo nuevo, "Estreno" en una pelicula. En la busqueda es
-   * null, porque el titulo ya se explica solo.
-   */
-  note: string | null;
-}
-
-/** El tipo mas informado de las entradas agrupadas. */
-type TitleCardKind = SearchResult['kind'];
 
 /**
  * Estado del reproductor para una fuente concreta.
@@ -113,7 +86,6 @@ export type ServerState =
   | 'apagado'
   | 'arrancando'
   | 'en-funcionamiento'
-  | 'suspendido'
   | 'deteniendo'
   | 'error';
 
@@ -122,8 +94,6 @@ export interface ServerStatus {
   port: number | null;
   pid: number | null;
   message: string | null;
-  suspendInSec: number | null;
-  stopInSec: number | null;
 }
 
 /**

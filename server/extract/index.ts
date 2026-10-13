@@ -208,6 +208,23 @@ export async function resolveStream(
 
   visited.add(embedUrl);
 
+  // Una URL que YA es un stream final no se resuelve: abrir un navegador para
+  // leer algo que ya sabemos que es un `.m3u8` (o un `.mp4`) solo gastaria
+  // segundos en volver a encontrarlo. El adaptador de sololatino, por ejemplo,
+  // descifra sus hosters y entrega la direccion directa; el extractor debe
+  // aceptarla tal cual y dejar que el llamante la valide.
+  const tipoDirecto = classifyStream(embedUrl);
+  if (tipoDirecto !== 'embed') {
+    return {
+      url: embedUrl,
+      type: tipoDirecto,
+      method: 'direct',
+      durationSec: null,
+      serverLabel,
+      proxied: false,
+    };
+  }
+
   // Un solo reloj para toda la resolucion, cadena de iframes incluida.
   //
   // `budgetMs` es un TOTAL, no un permiso por salto. Sin esto, `...opts` lo

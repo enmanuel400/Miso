@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, resolve, title as fetchTitle } from '../lib/api.js';
+import { recordHistory, toggleFavorite, useLibrary } from '../lib/library.js';
+import { IconStar } from './Icons.js';
 import type {
   Attempt,
   EpisodeInfo,
@@ -115,6 +117,19 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
   }, []);
 
   const posKey = pos ? `${pos.season}:${pos.episode}` : '';
+
+  const { favorites } = useLibrary();
+  const favorito = favorites.some((f) => f.key === card.key);
+
+  /*
+   * Abrir el titulo ya es "haberlo visto": no esperamos a que haya imagen para
+   * apuntarlo. Se vuelve a escribir cada vez que cambia de capitulo, porque el
+   * historial tiene que recordar por donde iba y no solo que lo abrio, y la clave
+   * es la tarjeta agrupada, asi que reabrir mueve al frente en vez de duplicar.
+   */
+  useEffect(() => {
+    recordHistory(card, pos);
+  }, [card, pos]);
 
   // Carga el detalle y deja que el servidor elija el servidor que funciona.
   // Una sola pasada para la fuente y el capitulo: los dos entran en la misma
@@ -326,6 +341,21 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
             {card.year}
             {card.rating && <span className="card-rating">{card.rating}</span>}
           </p>
+
+          {(detail?.synopsis ?? card.synopsis) && (
+            <p className="detail-synopsis">{detail?.synopsis ?? card.synopsis}</p>
+          )}
+
+          <button
+            type="button"
+            className="fav-btn"
+            data-on={favorito || undefined}
+            aria-pressed={favorito}
+            onClick={() => toggleFavorite(card)}
+          >
+            <IconStar size={15} filled={favorito} />
+            {favorito ? 'En favoritos' : 'Añadir a favoritos'}
+          </button>
 
           {fuentes.length > 1 && (
             <div className="switcher">

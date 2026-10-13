@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { createCipheriv, createHash } from 'node:crypto';
 import { pelisplushd } from '../server/sources/pelisplushd.js';
 import {
   capituloMasCercano,
@@ -10,6 +11,9 @@ import {
 } from '../server/sources/cuevana.js';
 import { cuevana3gs } from '../server/sources/cuevana3gs.js';
 import { lamovie } from '../server/sources/lamovie.js';
+import { sololatino } from '../server/sources/sololatino.js';
+import { descifrarEmbed69 } from '../server/sources/embed69.js';
+import { descifrarVidhide, desempaquetar, esVidhide } from '../server/sources/hosters.js';
 import { sinAnio } from '../server/sources/shared.js';
 import { repairEncoding } from '../server/http.js';
 import { mergeResults } from '../web/src/lib/merge.js';
@@ -620,6 +624,97 @@ if (capPhd.servers.length !== 5) fallo(`se esperaban 5 servidores en la pagina d
 if (capPhd.episodes !== null) fallo('la pagina de capitulo no deberia traer indice de capitulos');
 
 // ----------------------------------------------------------------------
+// Sinopsis completa de la ficha en pelisplushd
+// ----------------------------------------------------------------------
+
+/**
+ * La ficha de pelisplushd trae dos textos parecidos y solo uno sirve.
+ *
+ * La `meta[name="description"]` es un recorte de SEO cortado con puntos suspensivos
+ * y con el titulo delante; la sinopsis entera va en un bloque `div.text-large` al
+ * lado de su etiqueta. Preferir la meta —que es lo que se hacia— dejaba la ficha a
+ * medias: se leia la primera linea y media de la descripcion.
+ */
+console.log('\n=== pelisplushd: sinopsis de la ficha');
+
+const sinopsisCompleta =
+  'Una historia de amor realista, emocional y cercana sobre una pareja en su ' +
+  'd\u00e9cimo a\u00f1o de relaci\u00f3n, que ve c\u00f3mo sentimientos desconocidos ponen a prueba su ' +
+  'estabilidad.';
+
+const paginaSinopsis = `
+  <h1>Un amor distinto al tuyo</h1>
+  <meta name="description" content="Serie Un amor distinto al tuyo:Una historia de amor realista, que ve c\u00f3m..." />
+  <p class="text-dark font-size-13"><b>Sinopsis:</b> </p>
+  <div class="text-large"> ${sinopsisCompleta} </div>`;
+
+const conSinopsis = pelisplushd.parseDetail(
+  paginaSinopsis,
+  'pelisplushd.la',
+  'serie/un-amor-distinto-al-tuyo',
+);
+console.log(`  eligio: ${conSinopsis.synopsis?.slice(0, 70)}…`);
+
+if (conSinopsis.synopsis !== sinopsisCompleta) {
+  fallo(`la ficha debe preferir el bloque entero, salio: ${conSinopsis.synopsis}`);
+}
+// Sin la etiqueta delante el bloque sigue siendo la sinopsis y no se puede perder.
+const sinEtiqueta = pelisplushd.parseDetail(
+  '<h1>X</h1><div class="text-large">Texto entero de la sinopsis.</div>',
+  'pelisplushd.la',
+  'pelicula/x',
+);
+if (sinEtiqueta.synopsis !== 'Texto entero de la sinopsis.') {
+  fallo(`sinopsis sin etiqueta: ${sinEtiqueta.synopsis}`);
+}
+
+// Con el bloque ausente la meta es el unico dato que hay: se usa aunque venga
+// cortada. Un recorte es mas util que un hueco.
+const soloMeta = pelisplushd.parseDetail(
+  '<h1>Y</h1><meta name="description" content="Sinopsis corta de la meta." />',
+  'pelisplushd.la',
+  'pelicula/y',
+);
+if (soloMeta.synopsis !== 'Sinopsis corta de la meta.') {
+  fallo(`sinopsis desde la meta: ${soloMeta.synopsis}`);
+}
+
+// Tras el reclamo va la sinopsis de verdad, aunque sea corta: no se tira.
+const conReclamo = pelisplushd.parseDetail(
+  '<h1>Dune 2</h1>' +
+    '<p class="text-dark font-size-13"><b>Sinopsis:</b> </p>' +
+    '<div class="text-large"> Ver Dune 2 Online Latino, Español, Subtituladas Gratis ' +
+    '| Cuevana3. El filme nos vuelve a trasladar al planeta Arrakis, justo donde ' +
+    'habia terminado la historia anterior.</div>',
+  'pelisplushd.la',
+  'pelicula/dune-2',
+);
+console.log(`  con reclamo: ${conReclamo.synopsis}`);
+if (!conReclamo.synopsis?.startsWith('El filme nos vuelve a trasladar')) {
+  fallo(`se debe quitar el reclamo de SEO, salio: ${conReclamo.synopsis}`);
+}
+
+const reclamoCorto = pelisplushd.parseDetail(
+  '<h1>Z</h1><div class="text-large">Ver Z Online | Cuevana3. Corto.</div>',
+  'pelisplushd.la',
+  'pelicula/z',
+);
+if (reclamoCorto.synopsis !== 'Corto.') {
+  fallo(`tras el reclamo va la sinopsis: ${reclamoCorto.synopsis}`);
+}
+
+// Sin nada despues del reclamo no hay sinopsis: la ficha solo tiene el eslogan
+// del sitio. Se prefiere la tarjeta sin resumen antes que con publicidad.
+const soloReclamo = pelisplushd.parseDetail(
+  '<h1>W</h1><div class="text-large">Ver W (2026) Online Latino HD - Pelisplus</div>',
+  'pelisplushd.la',
+  'pelicula/w',
+);
+if (soloReclamo.synopsis !== null) {
+  fallo(`el eslogan solo no es sinopsis: ${soloReclamo.synopsis}`);
+}
+
+// ----------------------------------------------------------------------
 // Agrupado de la interfaz
 // ----------------------------------------------------------------------
 
@@ -895,6 +990,228 @@ console.log(`  kind : ${detalleWp.kind}`);
 console.log(`  url  : ${detalleWp.url}`);
 if (detalleWp.kind !== 'movie') fallo(`una pelicula sin ficha deberia conservar su kind: ${detalleWp.kind}`);
 if (detalleWp.url !== 'https://cuevana3.gs/peliculas/sonic-x/') fallo(`url de ficha inesperada: ${detalleWp.url}`);
+
+// ----------------------------------------------------------------------
+// sololatino: busqueda JSON, ficha por JSON-LD y descifrador de embed69
+// ----------------------------------------------------------------------
+
+console.log('\n=== sololatino: busqueda (autocompletado JSON)');
+const sugerencias = JSON.stringify([
+  {
+    type: 'movie',
+    title: 'Duna: Parte dos',
+    year: 2024,
+    poster: 'https://image.tmdb.org/t/p/w500/x.jpg',
+    url: 'https://sololatino.net/pelicula/dune-parte-dos',
+  },
+  {
+    type: 'series',
+    title: 'Duna: La profecía',
+    year: 2024,
+    poster: 'https://image.tmdb.org/t/p/w500/y.jpg',
+    url: 'https://sololatino.net/serie/dune-la-profecia',
+  },
+  {
+    type: 'anime',
+    title: 'Naruto',
+    year: 2002,
+    poster: null,
+    url: 'https://sololatino.net/serie/naruto',
+  },
+  {
+    type: 'toon',
+    title: 'Rick y Morty',
+    year: 2013,
+    poster: null,
+    url: 'https://sololatino.net/serie/rick-y-morty',
+  },
+  // `person` no es contenido: no debe llegar a la rejilla.
+  { type: 'person', title: 'Duna actor', url: 'https://sololatino.net/persona/duna' },
+]);
+const soloSug = sololatino.parseResults(sugerencias, 'sololatino.net');
+console.log(`  ${soloSug.length} resultado(s)`);
+for (const r of soloSug) console.log(`    ${(r.kind ?? '-').padEnd(6)} ${r.id}  ${r.title}  (${r.year ?? '?'})`);
+
+if (soloSug.length !== 4) fallo(`se esperaban 4 resultados (sin la persona) y salieron ${soloSug.length}`);
+if (soloSug[0]?.kind !== 'movie' || soloSug[1]?.kind !== 'series') fallo('kind mal leido del autocompletado');
+if (soloSug[2]?.kind !== 'anime') fallo(`"anime" deberia dar kind anime: ${soloSug[2]?.kind}`);
+if (soloSug[3]?.kind !== 'anime') fallo(`"toon" deberia dar kind anime: ${soloSug[3]?.kind}`);
+if (soloSug[0]?.id !== 'pelicula/dune-parte-dos') fallo(`id inesperado: ${soloSug[0]?.id}`);
+if (soloSug[0]?.poster !== 'https://image.tmdb.org/t/p/w500/x.jpg') fallo('poster mal leido del autocompletado');
+if (soloSug[0]?.year !== '2024') fallo(`año mal leido: ${soloSug[0]?.year}`);
+
+// Una respuesta que no es JSON no puede reventar la busqueda de las otras fuentes.
+if (sololatino.parseResults('<!doctype html><html>Just a moment...</html>', 'sololatino.net').length !== 0) {
+  fallo('una respuesta que no es JSON deberia dar cero resultados');
+}
+
+// La busqueda apunta a su autocompletado y codifica el termino.
+if (sololatino.searchUrl('sololatino.net', 'dune dos') !== 'https://sololatino.net/api/search/suggest?q=dune%20dos') {
+  fallo(`searchUrl inesperada: ${sololatino.searchUrl('sololatino.net', 'dune dos')}`);
+}
+
+// La URL de reproduccion: pelicula plana, capitulo con temporada y episodio.
+if (sololatino.playUrl('sololatino.net', 'pelicula/duna-2') !== 'https://sololatino.net/pelicula/duna-2') {
+  fallo('playUrl de pelicula incorrecta');
+}
+if (sololatino.playUrl('sololatino.net', 'serie/rick-y-morty', { season: 3, episode: 2 }) !== 'https://sololatino.net/serie/rick-y-morty/temporada-3/episodio-2') {
+  fallo(`playUrl de capitulo inesperada: ${sololatino.playUrl('sololatino.net', 'serie/rick-y-morty', { season: 3, episode: 2 })}`);
+}
+
+// ----------------------------------------------------------------------
+// Ficha: JSON-LD para la pelicula, ep-items para la serie.
+// ----------------------------------------------------------------------
+
+console.log('\n=== sololatino: ficha');
+const fichaMovie = `
+  <html><head>
+    <script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Movie',
+      name: 'Duna',
+      datePublished: '2021-09-15',
+      description: 'Paul Atreides viaja a Arrakis para asegurar el futuro de su familia.',
+      image: 'https://image.tmdb.org/t/p/w500/szcew6yyjcDvaL0isaPBk2e3nkF.jpg',
+      aggregateRating: { ratingValue: 8.1 },
+    })}</script>
+  </head><body><h1>Duna</h1></body></html>`;
+const dMovie = sololatino.parseDetail(fichaMovie, 'sololatino.net', 'pelicula/duna-2');
+console.log(`  title ${dMovie.title} · year ${dMovie.year} · kind ${dMovie.kind}`);
+if (dMovie.title !== 'Duna') fallo(`titulo de ficha inesperado: ${dMovie.title}`);
+if (dMovie.year !== '2021') fallo(`año de ficha mal leido: ${dMovie.year}`);
+if (dMovie.kind !== 'movie') fallo(`kind de pelicula inesperado: ${dMovie.kind}`);
+if (!dMovie.synopsis?.startsWith('Paul Atreides')) fallo('la sinopsis no vino del JSON-LD');
+if (dMovie.poster !== 'https://image.tmdb.org/t/p/w500/szcew6yyjcDvaL0isaPBk2e3nkF.jpg') {
+  fallo(`poster de ficha mal leido: ${dMovie.poster}`);
+}
+if (dMovie.episodes !== null) fallo('una pelicula no debe traer indice de temporadas');
+
+// Serie: las temporadas salen de los enlaces de capitulo, con su titulo y rango.
+const fichaSerie = `
+  <html><head>
+    <script type="application/ld+json">${JSON.stringify({
+      '@type': 'TVSeries',
+      name: 'Rick y Morty',
+      datePublished: '2013-12-02',
+      description: 'Un cientifico y su nieto viajan por el multiverso.',
+      image: 'https://image.tmdb.org/t/p/w500/rick.jpg',
+    })}</script>
+  </head><body>
+    <a class="ep-item" href="/serie/rick-y-morty/temporada-1/episodio-1">
+      <p class="ep-num">E1</p><p class="text-sm font-semibold">Piloto</p>
+    </a>
+    <a class="ep-item" href="/serie/rick-y-morty/temporada-1/episodio-2">
+      <p class="ep-num">E2</p><p class="text-sm font-semibold">Perro del espacio</p>
+    </a>
+    <a class="ep-item" href="/serie/rick-y-morty/temporada-3/episodio-1">
+      <p class="ep-num">E1</p><p class="text-sm font-semibold">El Rickazón</p>
+    </a>
+  </body></html>`;
+const dSerie = sololatino.parseDetail(fichaSerie, 'sololatino.net', 'serie/rick-y-morty');
+console.log(`  kind: ${dSerie.kind}  temporadas: ${dSerie.episodes?.seasons.map((s) => `${s.season}(${s.first}-${s.last})`).join(' ')}`);
+console.log(`  cap. por defecto: ${JSON.stringify(dSerie.episodes?.episode)}  (${dSerie.episodes?.episodes.length} en el indice)`);
+
+if (dSerie.kind !== 'series') fallo(`kind de serie incorrecto: ${dSerie.kind}`);
+if (dSerie.episodes?.seasons.length !== 2) fallo(`se esperaban 2 temporadas y salieron ${dSerie.episodes?.seasons.length}`);
+if (dSerie.episodes?.seasons[1]?.season !== 3) fallo('la segunda temporada no es la 3');
+if (dSerie.episodes?.episode?.season !== 1 || dSerie.episodes?.episode?.episode !== 1) fallo('el capitulo por defecto deberia ser el 1x1');
+if (dSerie.episodes?.episodes[0]?.title !== 'Piloto') fallo(`titulo de capitulo mal leido: ${dSerie.episodes?.episodes[0]?.title}`);
+
+// ----------------------------------------------------------------------
+// embed69: proof-of-work + AES. Se cifra un enlace con el mismo algoritmo y
+// se comprueba que el descifrador lo devuelve: valida el PoW, la clave y el
+// recorte de `dataLink` a la vez, sin depender de la pagina real.
+// ----------------------------------------------------------------------
+
+console.log('\n=== embed69: descifrado');
+const chal = 'c59cb753580b131b99b34ccd20b791cd';
+const salt = '6d07665b9850a0db';
+const dificultad = 3;
+const prefijo = '0'.repeat(dificultad);
+const sha256hex = (s: string) => createHash('sha256').update(s).digest('hex');
+let nonce = 0;
+while (!sha256hex(chal + nonce).startsWith(prefijo)) nonce++;
+const clave = createHash('sha256').update(chal + nonce + salt).digest();
+const cifrar = (texto: string): string => {
+  const iv = Buffer.from('0123456789abcdef', 'utf8');
+  const c = createCipheriv('aes-256-cbc', clave, iv);
+  return Buffer.concat([iv, c.update(texto, 'utf8'), c.final()]).toString('base64');
+};
+const dataLink = [
+  {
+    video_language: 'LAT',
+    sortedEmbeds: [
+      { servername: 'voe', link: cifrar('https://voe.sx/e/abc123') },
+      { servername: 'streamwish', link: cifrar('https://hglink.to/e/xyz789') },
+    ],
+  },
+  { video_language: 'ESP', sortedEmbeds: [{ servername: 'vidhide', link: cifrar('https://morencius.com/embed/qqq') }] },
+];
+const playerHtml = `<html><body><script>
+  const POW_CHALLENGE = '${chal}';
+  const POW_DIFFICULTY = ${dificultad};
+  const POW_SALT = '${salt}';
+  let dataLink = ${JSON.stringify(dataLink)};
+</script></body></html>`;
+
+const enlaces = descifrarEmbed69(playerHtml);
+console.log(`  ${enlaces.length} enlace(s) descifrado(s) (nonce ${nonce})`);
+for (const e of enlaces) console.log(`    ${e.language}  ${e.server.padEnd(12)} ${e.url}`);
+
+if (enlaces.length !== 3) fallo(`se esperaban 3 enlaces y salieron ${enlaces.length}`);
+if (enlaces[0]?.url !== 'https://voe.sx/e/abc123') fallo(`voe mal descifrado: ${enlaces[0]?.url}`);
+if (enlaces[1]?.server !== 'streamwish') fallo('nombre de hoster mal leido');
+if (enlaces[2]?.language !== 'ESP') fallo('idioma mal leido');
+
+// Un HTML sin el esquema no puede lanzar ni devolver basura.
+if (descifrarEmbed69('').length !== 0) fallo('un HTML vacio deberia dar cero enlaces');
+if (descifrarEmbed69('<html>nada que descifrar</html>').length !== 0) fallo('un HTML sin dataLink deberia dar cero enlaces');
+
+// ----------------------------------------------------------------------
+// vidhide (morencius.com): empaquetador de Dean Edwards + eleccion del video.
+//
+// El reproductor real esconde el video en `links.hls2` y publica en
+// `links.hls4` un manifiesto SENUELO con segmentos PNG de anuncios. La prueba
+// fija las dos cosas: que el empaquetador se deshace y que se elige hls2 y no
+// el primer `.m3u8` que aparezca.
+// ----------------------------------------------------------------------
+
+console.log('\n=== vidhide: desempaquetado y eleccion de enlace');
+
+// El cuerpo del empaquetador no lo mira el desempaquetador; basta con que la
+// llamada tenga la forma real `('p',a,c,'palabras'.split('|'))`.
+const empA =
+  "eval(function(p,a,c,k,e,d){while(c--){if(k[c])p=p.replace(new RegExp('\\\\b'+c+'\\\\b','g'),k[c])}return p}('0=1',10,2,'links|ok'.split('|')))";
+if (desempaquetar(empA) !== 'links=ok') {
+  fallo(`el empaquetador simple no se deshizo: ${desempaquetar(empA)}`);
+}
+console.log(`  empaquetado "${empA.slice(0, 40)}..." -> "${desempaquetar(empA)}"`);
+
+// Un HTML sin empaquetador queda igual: el desempaquetador no inventa.
+const sinPacker = '<html>sin empaquetador</html>';
+if (desempaquetar(sinPacker) !== sinPacker) fallo('un HTML sin empaquetador deberia quedar igual');
+
+// Con un `links` ya en claro se comprueba la eleccion: hls2 gana y hls4 (el
+// senuelo de segmentos PNG) no se toca.
+const vidhidePlano = `
+  <html><body>
+  <script>var links={"hls4":"/stream/senuelo-PNG.m3u8","hls2":"https://cdn.prueba/master.m3u8?t=abc"};</script>
+  </body></html>`;
+if (descifrarVidhide(vidhidePlano) !== 'https://cdn.prueba/master.m3u8?t=abc') {
+  fallo(`deberia preferir hls2: ${descifrarVidhide(vidhidePlano)}`);
+}
+console.log(`  hls2 elegido: ${descifrarVidhide(vidhidePlano)}`);
+
+// Solo con el senuelo no hay video: null, no una URL rota.
+const vidhideSenuelo = '<html><script>var links={"hls4":"/stream/senuelo-PNG.m3u8"};</script></html>';
+if (descifrarVidhide(vidhideSenuelo) !== null) {
+  fallo(`con solo el senuelo deberia devolver null: ${descifrarVidhide(vidhideSenuelo)}`);
+}
+
+// Deteccion de familia: el host observado si; uno ajeno no.
+if (!esVidhide('https://morencius.com/embed/abcd')) fallo('morencius.com deberia reconocerse como vidhide');
+if (esVidhide('https://voe.sx/e/abcd')) fallo('voe.sx no es vidhide');
+if (esVidhide(null)) fallo('null no es vidhide');
 
 console.log(failures === 0 ? '\nOK: los parsers producen resultados limpios' : `\n${failures} fallo(s)`);
 process.exit(failures === 0 ? 0 : 1);

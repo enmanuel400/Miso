@@ -16,7 +16,6 @@ export type ServerState =
   | 'apagado'
   | 'arrancando'
   | 'en-funcionamiento'
-  | 'suspendido'
   | 'deteniendo'
   | 'error';
 
@@ -27,10 +26,6 @@ export interface ServerStatus {
   pid: number | null;
   /** Motivo del estado 'error', si lo hay. */
   message: string | null;
-  /** Segundos que faltan para la suspension automatica. */
-  suspendInSec: number | null;
-  /** Segundos que faltan para el apagado automatico. */
-  stopInSec: number | null;
 }
 
 const api = {
@@ -42,15 +37,6 @@ const api = {
 
   /** Estado actual, sin efectos. */
   status: (): Promise<ServerStatus> => ipcRenderer.invoke('server:status'),
-
-  /**
-   * Registra actividad del usuario. Reinicia los temporizadores de inactividad
-   * que apagan el navegador y luego el servidor. Se llama en cada pulsacion o
-   * cambio de teclado, no en un `setInterval`, para que la cuenta sea real.
-   */
-  touch: (): void => {
-    ipcRenderer.send('app:touch');
-  },
 
   /** Notificacion push del proceso principal cuando cambia el estado. */
   onStatus: (cb: (s: ServerStatus) => void): (() => void) => {

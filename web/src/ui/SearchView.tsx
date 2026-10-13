@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, home as fetchHome, search } from '../lib/api.js';
+import { useLibrary } from '../lib/library.js';
 import { failedSources, mergeResults } from '../lib/merge.js';
 import type { AggregatedSearch, SourceMeta, TitleCard } from '../lib/types.js';
-import { LogoMark } from './Logo.js';
 import { ResultCard } from './ResultCard.js';
+import { SkeletonGrid } from './Skeletons.js';
 
 /**
  * Pantalla de busqueda.
@@ -72,6 +73,7 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
   const abort = useRef<AbortController | null>(null);
   const homeAbort = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { history } = useLibrary();
 
   const nombres = sources.map((s) => s.label);
   const cuantas = nombres.length;
@@ -168,14 +170,14 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
   const inicioCards = inicio.data ? mergeResults(inicio.data.results) : [];
   const inicioFailed = inicio.data ? failedSources(inicio.data) : [];
 
+  // "Continuar viendo" no es lo mismo que el historial: aqui solo caben los
+  // ultimos que se abrieron, para que el inicio siga siendo de un vistazo. La
+  // lista completa esta en su seccion.
+  const continuar = history.slice(0, 6);
+
   return (
     <div className="search">
       <header className="search-head">
-        <span className="brand">
-          <LogoMark className="brand-mark" size={17} />
-          <span className="wordmark">Miso</span>
-        </span>
-
         <div className="searchbar">
           <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
             <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
@@ -245,6 +247,23 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
          */}
         {phase.kind === 'vacio' && (
           <>
+            {continuar.length > 0 && (
+              <>
+                <h2 className="home-title">Continuar viendo</h2>
+                <ul className="grid">
+                  {continuar.map((s, i) => (
+                    <ResultCard
+                      key={`h-${s.key}`}
+                      card={s.last ? { ...s.card, note: `T${s.last.season}E${s.last.episode}` } : s.card}
+                      accentBySource={accentBySource}
+                      onOpen={onOpen}
+                      index={i}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+
             <h2 className="home-title">Lo más nuevo</h2>
             <p className="hint">
               {cuantas
@@ -276,11 +295,7 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
               </p>
             ))}
 
-            {inicio.cargando && inicioCards.length === 0 && (
-              <ul className="grid" aria-hidden="true">
-                {skeletons()}
-              </ul>
-            )}
+            {inicio.cargando && inicioCards.length === 0 && <SkeletonGrid />}
 
             {inicioCards.length > 0 && (
               <ul className="grid">
@@ -302,11 +317,7 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
           </>
         )}
 
-        {phase.kind === 'buscando' && cards.length === 0 && (
-          <ul className="grid" aria-hidden="true">
-            {skeletons()}
-          </ul>
-        )}
+        {phase.kind === 'buscando' && cards.length === 0 && <SkeletonGrid />}
 
         {cards.length > 0 && (
           <ul className="grid">
@@ -328,19 +339,4 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
       </div>
     </div>
   );
-}
-
-/**
- * Esqueletos de carga.
- *
- * Mantienen la rejilla en su sitio mientras llegan los resultados. Sin ellos,
- * el contenido salta de una vez que responde la fuente mas rapida y el resto
- * empuja la pantalla hacia abajo cuando llegan las demas.
- */
-function skeletons() {
-  return Array.from({ length: 10 }, (_, i) => (
-    <li key={i} className="card card-skeleton" style={{ animationDelay: `${i * 40}ms` }}>
-      <div className="card-art" />
-    </li>
-  ));
 }

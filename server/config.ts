@@ -34,6 +34,12 @@ export const PROXY_ALLOWLIST = [
   'cuevana3.gs',
   'lamovie.org',
   'videoapp.zip',
+  // sololatino.net: la web, su player embed69 y los hosters que este descifra.
+  'sololatino.net',
+  'embed69.org',
+  'player.pelisserieshoy.com',
+  'morencius.com',
+  'hglink.to',
   // Hosteros de la familia streamwish
   'vimeos.net',
   'vimeos.zip',

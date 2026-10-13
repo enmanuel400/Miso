@@ -16,12 +16,6 @@ import path from 'node:path';
 
 // ---------------------------------------------------------------- constantes
 
-/** Nivel 1 de inactividad: se cierra el navegador headless, el servidor sigue. */
-const SUSPEND_AFTER_SEC = 3 * 60;
-
-/** Nivel 2 de inactividad: se detiene el servidor completo. */
-const STOP_AFTER_SEC = 12 * 60;
-
 /** Puerto preferido. Si esta ocupado buscamos otro: dos Miso pueden convivir. */
 const PREFERRED_PORT = 7345;
 
@@ -58,15 +52,13 @@ const ARRANQUE = path.join(HERE, 'arranque.html');
 
 // -------------------------------------------------------------------- estado
 
-type State = 'apagado' | 'arrancando' | 'en-funcionamiento' | 'suspendido' | 'deteniendo' | 'error';
+type State = 'apagado' | 'arrancando' | 'en-funcionamiento' | 'deteniendo' | 'error';
 
 interface Status {
   state: State;
   port: number | null;
   pid: number | null;
   message: string | null;
-  suspendInSec: number | null;
-  stopInSec: number | null;
 }
 
 let status: Status = {
@@ -74,8 +66,6 @@ let status: Status = {
   port: null,
   pid: null,
   message: null,
-  suspendInSec: null,
-  stopInSec: null,
 };
 
 let child: ChildProcess | null = null;
@@ -90,34 +80,12 @@ let child: ChildProcess | null = null;
 let quitting = false;
 let win: BrowserWindow | null = null;
 
-/** Momento de la ultima actividad del usuario, en ms del reloj del sistema. */
-let lastActivity = Date.now();
-
-/**
- * Hay que distinguir "todavia dentro de la ventana de inactividad" de "ya no".
- * Un temporizador que se rearma por completo cada vez que hay actividad puede
- * tener la ventana recortada en un multiplo del intervalo y, aun asi, disparar
- * antes de tiempo. Comparar contra marcas absolutas lo evita.
- */
-let suspendAt = Date.now() + SUSPEND_AFTER_SEC * 1000;
-let stopAt = Date.now() + STOP_AFTER_SEC * 1000;
-
 // ------------------------------------------------------------------ utilidad
 
 function publish(patch: Partial<Status> = {}): Status {
-  const now = Date.now();
   status = { ...status, ...patch };
 
-  const remaining = (deadline: number) =>
-    status.state === 'en-funcionamiento' || status.state === 'suspendido'
-      ? Math.max(0, Math.ceil((deadline - now) / 1000))
-      : null;
-
-  const snapshot: Status = {
-    ...status,
-    suspendInSec: remaining(suspendAt),
-    stopInSec: remaining(stopAt),
-  };
+  const snapshot: Status = { ...status };
 
   if (win && !win.isDestroyed()) {
     win.webContents.send('server:status', snapshot);
@@ -214,10 +182,6 @@ async function startServer(): Promise<Status> {
 
   publish({ state: 'arrancando', port, message: null, pid: null });
 
-  lastActivity = Date.now();
-  suspendAt = lastActivity + SUSPEND_AFTER_SEC * 1000;
-  stopAt = lastActivity + STOP_AFTER_SEC * 1000;
-
   // `spawn` y no `fork`. Electron corre sobre Node, pero `fork` ahi exige un
   // canal `ipc` en `stdio` (ERR_CHILD_PROCESS_IPC_REQUIRED) y sin el el proceso
   // no llega ni a crearse. Ese canal no hacia falta para nada: el servidor avisa
@@ -271,7 +235,7 @@ async function startServer(): Promise<Status> {
         message: `El servidor se detuvo solo (codigo ${code ?? signal ?? 'desconocido'}).`,
       });
     } else {
-      publish({ state: 'apagado', pid: null, port: null, suspendInSec: null, stopInSec: null });
+      publish({ state: 'apagado', pid: null, port: null });
     }
   });
 
@@ -362,7 +326,7 @@ async function stopServer(): Promise<Status> {
   const proc = child;
   if (!proc) return publish({ state: 'apagado', pid: null, port: null });
 
-  publish({ state: 'deteniendo', suspendInSec: null, stopInSec: null });
+  publish({ state: 'deteniendo' });
 
   // Avisamos por HTTP para que cierre el navegador antes de morir. Si ya no
   // responde, no pasa nada: el corte de la seccion siguiente lo recoge igual.
@@ -375,48 +339,12 @@ async function stopServer(): Promise<Status> {
   return publish({ state: 'apagado', pid: null, port: null });
 }
 
-// ------------------------------------------------------------- inactividad
-
-/** Reinicia las dos ventanas de inactividad. */
-function touch(): void {
-  lastActivity = Date.now();
-  suspendAt = lastActivity + SUSPEND_AFTER_SEC * 1000;
-  stopAt = lastActivity + STOP_AFTER_SEC * 1000;
-}
-
-async function suspendBrowser(): Promise<void> {
-  if (!child || !status.port || status.state !== 'en-funcionamiento') return;
-  publish({ state: 'suspendido', message: null });
-  await fetch(`http://127.0.0.1:${status.port}/api/suspend`, { method: 'POST' }).catch(
-    () => undefined,
-  );
-}
-
-/**
- * Un solo temporizador para los dos niveles, en vez de dos `setInterval`.
- *
- * Compara contra una marca absoluta en lugar de rearmar con cada tic: asi el
- * nivel 1 nunca puede disparar antes de los 3 min aunque la actividad caiga
- * justo en el limite, y ambos niveles siguen siendo independientes.
- */
-setInterval(() => {
-  if (!child || status.state === 'deteniendo' || status.state === 'arrancando') return;
-  const now = Date.now();
-  if (now < suspendAt || now < stopAt) return;
-
-  if (now >= stopAt) {
-    void stopServer();
-  } else if (now >= suspendAt && status.state === 'en-funcionamiento') {
-    void suspendBrowser();
-  }
-}, 5_000).unref?.();
-
 // ---------------------------------------------------------------- ventana
 
 /** Que pantalla toca. Lo decide si el servidor responde, no el ultimo clic. */
 function abrirPantalla(): void {
   if (!win || win.isDestroyed()) return;
-  if (status.state === 'en-funcionamiento' || status.state === 'suspendido') {
+  if (status.state === 'en-funcionamiento') {
     void win.loadURL(urlApp());
   } else {
     void win.loadFile(ARRANQUE);
@@ -470,10 +398,10 @@ function createWindow(): void {
     win = null;
   });
 
-  // El servidor puede caerse mientras la ventana esta puesta: el temporizador de
-  // inactividad lo detiene a los doce minutos y el boton de la barra inferior lo
-  // detiene a voluntad. En ambos casos la aplicacion deja de responder y Chromium
-  // pondria su pagina de error en lugar de la pantalla de arranque.
+  // El servidor puede caerse mientras la ventana esta puesta: el boton de la
+  // barra inferior lo detiene a voluntad. En ese caso la aplicacion deja de
+  // responder y Chromium pondria su pagina de error en lugar de la pantalla de
+  // arranque.
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     // -3 es ERR_ABORTED: una navegacion que se cancela a proposito, no un fallo.
     if (code === -3) return;
@@ -501,8 +429,6 @@ ipcMain.handle('app:versions', () => ({
   chrome: process.versions.chrome ?? '',
   node: process.versions.node,
 }));
-
-ipcMain.on('app:touch', () => touch());
 
 // ------------------------------------------------------------------ arranque
 

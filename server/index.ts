@@ -5,10 +5,13 @@ import { SERVER_PORT, PATHS, PROXY_ALLOWLIST } from './config.js';
 import { SOURCES, sourceMeta, getSource } from './sources/index.js';
 import { searchAll } from './search.js';
 import { homeAll } from './home.js';
+import { GENRES, findGenre } from './genres.js';
+import { genreAll } from './genre.js';
 import { resolveTitle, resolveStream, closeBrowser, isBrowserRunning } from './extract/index.js';
 import { imageProxy } from './proxy/image.js';
 import { hlsProxy } from './proxy/hls.js';
 import { cacheClear, cacheStats } from './cache.js';
+import { readLibrary, recordHistory, forgetHistory, toggleFavorite, sanitize } from './store.js';
 import { HttpError } from './http.js';
 import type { EpisodeRef } from './sources/types.js';
 
@@ -49,15 +52,8 @@ export function createServer() {
   });
 
   /**
-   * Suspension por inactividad (nivel 1): cierra el navegador headless pero
-   * mantiene el servidor escuchando, para que reanudar sea instantaneo.
+   * Apagado ordenado (cierre de la app o boton de la barra inferior).
    */
-  app.post('/api/suspend', async (_req, res) => {
-    await closeBrowser();
-    res.json({ ok: true, browser: isBrowserRunning() });
-  });
-
-  /** Apagado ordenado (nivel 2 y cierre de la app). */
   app.post('/api/shutdown', async (_req, res) => {
     res.json({ ok: true, stopping: true });
     // Respondemos antes de morir, o el cliente veria un error de red.
@@ -100,6 +96,76 @@ export function createServer() {
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // ------------------------------------------------------------------
+  // Generos
+  // ------------------------------------------------------------------
+
+  /** El catalogo cerrado que ofrece la interfaz. No depende de ninguna fuente. */
+  app.get('/api/genres', (_req, res) => {
+    res.json({ genres: GENRES });
+  });
+
+  /**
+   * Un genero, federado.
+   *
+   * `g` es el nombre o el slug de una entrada del catalogo y `kind` filtra por
+   * tipo. Un genero que no esta en el catalogo es un 400 y no una busqueda a
+   * ciegas: el conjunto de generos lo decide la aplicacion, no quien pregunta.
+   */
+  app.get('/api/genre', async (req, res) => {
+    const genero = findGenre(typeof req.query.g === 'string' ? req.query.g : '');
+    if (!genero) {
+      res.status(400).json({ error: 'genero desconocido' });
+      return;
+    }
+    const kindRaw = typeof req.query.kind === 'string' ? req.query.kind : '';
+    const kind =
+      kindRaw === 'movie' || kindRaw === 'series' || kindRaw === 'anime' ? kindRaw : null;
+
+    try {
+      res.json(await genreAll(genero, kind));
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Biblioteca: historial y favoritos
+  // ------------------------------------------------------------------
+
+  app.get('/api/library', (_req, res) => {
+    res.json(readLibrary());
+  });
+
+  /** Anota un titulo visto. Es idempotente por `key`: repetir lo sube al frente. */
+  app.post('/api/library/history', (req, res) => {
+    const entry = sanitize(req.body);
+    if (!entry) {
+      res.status(400).json({ error: 'guardado invalido' });
+      return;
+    }
+    res.json({ history: recordHistory(entry) });
+  });
+
+  /**
+   * Olvida un titulo (`?key=`) o vacia el historial entero (sin `key`).
+   */
+  app.delete('/api/library/history', (req, res) => {
+    const key = typeof req.query.key === 'string' ? req.query.key : null;
+    res.json({ history: forgetHistory(key) });
+  });
+
+  /** Marca o desmarca un favorito. Devuelve el estado resultante. */
+  app.post('/api/library/favorites', (req, res) => {
+    const entry = sanitize(req.body);
+    if (!entry) {
+      res.status(400).json({ error: 'guardado invalido' });
+      return;
+    }
+    const { favorited, favorites } = toggleFavorite(entry);
+    res.json({ favorited, favorites });
   });
 
   // ------------------------------------------------------------------

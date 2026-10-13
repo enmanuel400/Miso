@@ -265,6 +265,67 @@ function urlDeCapitulo(domain: string, id: string, pos: EpisodeRef): string {
   return `https://${domain}/${id}/temporada/${pos.season}/capitulo/${pos.episode}`;
 }
 
+/**
+ * Sinopsis de la ficha.
+ *
+ * El texto completo viene en un bloque etiquetado:
+ *
+ *   <p><b>Sinopsis:</b></p>
+ *   <div class="text-large"> … </div>
+ *
+ * La `meta[name="description"]` parece el mismo texto, pero es un recorte de SEO
+ * cortado a media palabra y con el titulo delante. Preferirla —que es lo que se
+ * hacia antes— dejaba la sinopsis a medias en la ficha; el bloque es la frase
+ * entera. La meta solo se usa cuando ese bloque no aparece.
+ */
+function sinopsisDe($: CheerioAPI): string | null {
+  const etiqueta = $('p')
+    .filter((_, el) => /^sinopsis\s*:?\s*$/i.test(cleanText($(el).text())))
+    .first();
+
+  const candidatos = [
+    etiqueta.length > 0 ? etiqueta.next().text() : '',
+    $('.movie-description, .sinopsis, .description').first().text(),
+    $('.text-large').first().text(),
+    $('meta[name="description"]').attr('content') ?? '',
+  ];
+
+  for (const bruto of candidatos) {
+    const limpio = limpiarSinopsis(cleanText(bruto));
+    if (limpio) return limpio;
+  }
+  return null;
+}
+
+/**
+ * Quita el reclamo de SEO que el sitio antepone al resumen.
+ *
+ * Muchas fichas no traen una sinopsis propia y el bloque repite el texto de
+ * posicionamiento con el que el sitio se anuncia, justo delante del resumen real:
+ *
+ *   "Ver Dune 2 Online Latino, Español, Subtituladas Gratis | Cuevana3. El filme
+ *    nos vuelve a trasladar al planeta Arrakis..."
+ *
+ * Se recorta ese reclamo y se deja lo que sigue. Cuando no hay nada despues —la
+ * ficha solo tiene el anuncio, su sinopsis de verdad no existe— se devuelve
+ * vacio: anunciar no es resumir, y una tarjeta sin resumen es mas honesta que una
+ * con el eslogan del sitio. Tambien se quita la cabecera de la meta
+ * ("Pelicula Dune 2:Ver...").
+ */
+function limpiarSinopsis(texto: string): string {
+  const sinCabecera = texto.replace(
+    /^(?:serie|pel[ií]cula|anime|documental)\s+[^:]{1,90}:\s*/i,
+    '',
+  );
+  if (!/^ver\b/i.test(sinCabecera)) return sinCabecera.trim();
+
+  // El reclamo termina en el nombre del sitio, casi siempre con un punto: lo que
+  // lo sigue es la sinopsis.
+  const reclamo = sinCabecera.match(/^[^|]*\|\s*[^.|]{2,40}\.\s*/);
+  if (!reclamo) return '';
+  return sinCabecera.slice(reclamo[0].length).trim();
+}
+
 export const pelisplushd: SourceAdapter = {
   meta: {
     id: 'pelisplushd',
@@ -363,10 +424,7 @@ export const pelisplushd: SourceAdapter = {
       null;
     const poster = img && img.startsWith('/') ? `https://${domain}${img}` : img;
 
-    const synopsis =
-      cleanText($('meta[name="description"]').attr('content')) ||
-      cleanText($('.movie-description, .sinopsis, .description').first().text()) ||
-      null;
+    const synopsis = sinopsisDe($);
 
     const { seasons, episodes } = capitulosDe($);
     const porDefecto = primerCapitulo(seasons);
@@ -458,5 +516,19 @@ export const pelisplushd: SourceAdapter = {
       0,
       limit,
     );
+  },
+
+  /**
+   * Genero, por la pagina `/generos/{slug}`.
+   *
+   * La rejilla tiene la misma marca `.Posters-link` que una busqueda, asi que se
+   * reutiliza `parseResults` y no hay un segundo lector de HTML que pueda
+   * desincronizarse. La pagina lista tanto peliculas como series; el filtro por
+   * tipo lo hace el orquestador despues.
+   */
+  async fetchByGenre(domain, genre) {
+    const url = `https://${domain}/generos/${encodeURIComponent(genre.slug)}`;
+    const html = await fetchText(url, { referer: `https://${domain}/generos`, timeoutMs: 20_000 });
+    return this.parseResults(html, domain);
   },
 };

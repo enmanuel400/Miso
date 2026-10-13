@@ -127,6 +127,12 @@ export interface FetchOptions {
   cookie?: string;
 }
 
+/** Opciones de `fetchJson`: las mismas que `FetchOptions` mas el metodo y el cuerpo. */
+export interface FetchJsonOptions extends FetchOptions {
+  /** Verbo HTTP. Por defecto GET. */
+  method?: 'GET' | 'POST';
+}
+
 export class HttpError extends Error {
   constructor(
     message: string,
@@ -164,6 +170,59 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<s
     // codificado. Es mas fiable que fiarse solo del header, porque ninguna
     // fuente lo declara de forma consistente.
     return repairEncoding(buf.toString('utf8'));
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new HttpError(`Fallo de red en ${url}: ${reason}`, 0);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Pide JSON a una fuente, con GET o POST.
+ *
+ * Existe porque no todas las fuentes dejan el embed escrito en el HTML: algunas
+ * exponen la lista de reproductores por un endpoint que hay que POSTEAR (asi
+ * funciona sololatino.net, que cifra cada enlace en un token y solo lo devuelve
+ * `POST /api/player-url` con `{ t: token }`).
+ *
+ * Comparte la `User-Agent` y el `Accept-Language` con `fetchText` a proposito:
+ * son peticiones que el navegador de la fuente haria con esas cabeceras y hay
+ * sitios que responden distinto segun el cliente. `Accept` y `Content-Type` si
+ * cambian, porque aqui el cuerpo es JSON y no HTML.
+ */
+export async function fetchJson<T>(
+  url: string,
+  body: unknown,
+  opts: FetchJsonOptions = {},
+): Promise<T> {
+  const { timeoutMs = 20_000, referer, cookie, method = 'POST' } = opts;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method,
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': UA,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': ACCEPT_LANGUAGE,
+        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+        'X-Requested-With': 'XMLHttpRequest',
+        ...(referer ? { Referer: referer } : {}),
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      ...(method === 'POST' ? { body: JSON.stringify(body ?? {}) } : {}),
+    });
+
+    if (!res.ok) {
+      throw new HttpError(`HTTP ${res.status} en ${url}`, res.status);
+    }
+
+    return JSON.parse(await res.text()) as T;
   } catch (err) {
     if (err instanceof HttpError) throw err;
     const reason = err instanceof Error ? err.message : String(err);

@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { toggleFavorite, useLibrary } from '../lib/library.js';
 import type { TitleCard } from '../lib/types.js';
+import { IconStar } from './Icons.js';
 
 /**
  * Tarjeta de resultado.
@@ -41,6 +43,8 @@ const STAGGER_CAP = 12;
 
 export function ResultCard({ card, accentBySource, onOpen, index }: Props) {
   const [posterFailed, setPosterFailed] = useState(false);
+  const { favorites } = useLibrary();
+  const favorito = favorites.some((f) => f.key === card.key);
 
   /*
    * Una insignia por FUENTE, no por entrada.
@@ -114,6 +118,28 @@ export function ResultCard({ card, accentBySource, onOpen, index }: Props) {
            */}
           {card.note && <p className="card-note">{card.note}</p>}
         </div>
+      </button>
+
+      {/*
+       * La estrella es HERMANA del boton de la tarjeta, no hija.
+       *
+       * Dentro habria dos `button` anidados —invalido— y el clic en la estrella
+       * abriria ademas el titulo. Como hermana se coloca encima con `position` y
+       * `stopPropagation` deja de hacer falta para lo mismo.
+       */}
+      <button
+        type="button"
+        className="card-fav"
+        data-on={favorito || undefined}
+        aria-pressed={favorito}
+        aria-label={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+        title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleFavorite(card);
+        }}
+      >
+        <IconStar size={15} filled={favorito} />
       </button>
     </li>
   );

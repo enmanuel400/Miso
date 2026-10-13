@@ -93,6 +93,7 @@ export function mergeResults(results: SearchResult[]): TitleCard[] {
         kind: result.kind,
         year: result.year,
         rating: result.rating,
+        synopsis: result.synopsis ?? null,
         entries: [result],
         // La nota no se copia aqui: sale de `notaDeTarjeta` al final, cuando ya se
         // sabe cuantas entradas tiene la tarjeta. Copiarla ahora obliga a
@@ -108,6 +109,7 @@ export function mergeResults(results: SearchResult[]): TitleCard[] {
     card.kind ??= result.kind;
     card.year ??= result.year;
     card.rating ??= result.rating;
+    card.synopsis ??= result.synopsis ?? null;
     if (result.title.length > card.title.length) card.title = result.title;
 
     const yaEsta = (e: SearchResult) =>

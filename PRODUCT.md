@@ -52,8 +52,8 @@ No es un rechazo permanente de esas funciones, solo no están construidas.
   pestaña de navegador.
 - El arranque muestra un splash con "Iniciar servidor"; el servidor no debe
   abrir una terminal visible.
-- Inactividad en dos niveles: suspender el navegador a los ~3 min, detener el
-  servidor completo a los ~12 min.
+- El servidor permanece en marcha mientras la ventana esté abierta. No hay
+  apagado automático por inactividad (interrumpía la reproducción).
 - Cerrar la app debe detener el servidor.
 - El Chromium de Playwright va **empaquetado en el instalador**, nunca
   descargado en tiempo de ejecución.

@@ -1,6 +1,7 @@
 import type {
   EpisodeInfo,
   EpisodeRef,
+  Genre,
   MediaKind,
   PlaybackServer,
   SearchResult,
@@ -100,7 +101,29 @@ export interface SourceAdapter {
    * fecha no debe inventarse uno. Lo que devuelva se mezcla con el de las demas y
    * se recorta al total, asi que puede devolver mas de los que hagan falta.
    */
+  /**
+   * Lo mas nuevo de la fuente, para la pantalla de inicio.
+   *
+   * Opcional a proposito: una fuente que no exponga un listado ordenado por
+   * fecha no debe inventarse uno. Lo que devuelva se mezcla con el de las demas y
+   * se recorta al total, asi que puede devolver mas de los que hagan falta.
+   */
   fetchHome?(domain: string, limit: number): Promise<SearchResult[]>;
+
+  /**
+   * Titulos de un genero.
+   *
+   * Opcional, igual que `fetchHome`: solo la implementan las fuentes que
+   * exponen un listado por genero. Devuelve el genero entero o, si la fuente
+   * sabe separar por tipo, solo el tipo pedido; el orquestador no asume ninguna
+   * de las dos cosas y filtra por `kind` al final.
+   */
+  fetchByGenre?(
+    domain: string,
+    genre: Genre,
+    kind: MediaKind | null,
+    limit: number,
+  ): Promise<SearchResult[]>;
 }
 
 /** Normaliza texto: colapsa espacios, recorta y repara entidades basicas. */
@@ -115,6 +138,27 @@ export function cleanText(raw: string | undefined | null): string {
     .replace(/&gt;/gi, '>')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Limpia una sinopsis y descarta el relleno.
+ *
+ * Las fuentes tipo Cuevana traen la MISMA frase de relleno cuando no hay
+ * resumen: "Aún no hemos añadido un resumen para este título. Puedes
+ * ayudarnos…". No es una sinopsis, y pintarla ocupa justo el hueco donde
+ * deberia leerse la descripcion; asi que se trata como el caso vacio.
+ */
+export function sinopsisUtil(raw: string | undefined | null): string | null {
+  const t = cleanText(raw);
+  if (!t) return null;
+  const low = t.toLowerCase();
+  if (
+    /a[uú]n no (hemos )?a[ñn]adido/.test(low) ||
+    /no (hemos|hay) (a[ñn]adido|){0,1}(un )?(resumen|sinopsis)/.test(low)
+  ) {
+    return null;
+  }
+  return t;
 }
 
 /**

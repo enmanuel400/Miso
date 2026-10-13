@@ -18,7 +18,6 @@ const LABEL: Record<ServerStatus['state'], string> = {
   apagado: 'Servidor apagado',
   arrancando: 'Arrancando…',
   'en-funcionamiento': 'Servidor en marcha',
-  suspendido: 'Servidor suspendido',
   deteniendo: 'Deteniendo…',
   error: 'Servidor caído',
 };
@@ -34,21 +33,6 @@ export function BottomBar({ status, canStop, onStop }: Props) {
         {status.pid ? <span className="bottombar-pid">pid {status.pid}</span> : null}
       </span>
 
-      {/* Los dos niveles de inactividad, contados. Verlos evita la sorpresa de
-          que una busqueda tarde: se sabe que queda poco para que se apague. */}
-      <span className="bottombar-clocks">
-        {status.suspendInSec !== null && status.state === 'en-funcionamiento' && (
-          <span title="El navegador sin cabeza se cierra al rato de no hacer nada">
-            navegador en {format(status.suspendInSec)}
-          </span>
-        )}
-        {status.stopInSec !== null && (
-          <span title="El servidor se detiene al rato de no hacer nada">
-            servidor en {format(status.stopInSec)}
-          </span>
-        )}
-      </span>
-
       {canStop && (
         <button type="button" className="ghost" onClick={onStop} disabled={busy}>
           Detener servidor
@@ -56,12 +40,4 @@ export function BottomBar({ status, canStop, onStop }: Props) {
       )}
     </footer>
   );
-}
-
-/** Segundos a mm:ss, o "ahora" cuando ya toca. */
-function format(sec: number): string {
-  if (sec <= 0) return 'ahora';
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`;
 }

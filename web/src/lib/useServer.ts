@@ -14,7 +14,6 @@ interface MisoBridge {
   start(): Promise<ServerStatus>;
   stop(): Promise<ServerStatus>;
   status(): Promise<ServerStatus>;
-  touch(): void;
   onStatus(cb: (s: ServerStatus) => void): () => void;
   versions(): Promise<{ app: string; electron: string; chrome: string; node: string }>;
   isDesktop: true;
@@ -37,16 +36,12 @@ const IDLE: ServerStatus = {
   port: null,
   pid: null,
   message: null,
-  suspendInSec: null,
-  stopInSec: null,
 };
 
 export interface ServerController {
   status: ServerStatus;
   start(): Promise<void>;
   stop(): Promise<void>;
-  /** Se llama en cada actividad del usuario para reiniciar la inactividad. */
-  touch(): void;
   versions: { app: string; electron: string; chrome: string; node: string } | null;
 }
 
@@ -101,22 +96,5 @@ export function useServer(): ServerController {
     setStatus(await bridge.stop());
   }, []);
 
-  /**
-   * La actividad se registra por evento, no por temporizador: asi los tres
-   * minutos cuentan desde la ultima pulsacion de verdad y no desde el ultimo
-   * tic del arbol de componentes.
-   */
-  const lastTouch = useRef(0);
-
-  const touch = useCallback(() => {
-    if (!bridge) return;
-    const now = performance.now();
-    // Un tope de 20 Hz: el raton genera eventos mucho mas rapido de lo que el
-    // proceso principal necesita enterarse, y cada envio cruza el puente.
-    if (now - lastTouch.current < 50) return;
-    lastTouch.current = now;
-    bridge.touch();
-  }, []);
-
-  return { status, start, stop, touch, versions };
+  return { status, start, stop, versions };
 }

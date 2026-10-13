@@ -2,6 +2,7 @@ import type { SourceAdapter } from './shared.js';
 import { pelisplushd } from './pelisplushd.js';
 import { cuevana3gs } from './cuevana3gs.js';
 import { lamovie } from './lamovie.js';
+import { sololatino } from './sololatino.js';
 import { fetchText } from '../http.js';
 import { cacheGet, cacheSet } from '../cache.js';
 
@@ -46,8 +47,15 @@ import { cacheGet, cacheSet } from '../cache.js';
  * No era un hueco nuestro y no se arregla por el lado de Miso: cuando el
  * hostero dice que el fichero ya no esta, no hay nada que extraer. Ver
  * paginas-fuentes.md.
+ *
+ * sololatino.net llego por otra razon: catalogo de series y peliculas con
+ * reproductores en mas idiomas y calidad mas alta. No entra por `wpapi` porque
+ * su API no se parece en nada: la busqueda es un autocompletado JSON y los
+ * embeds se piden con un POST sobre un testigo. Su adaptador resuelve el player
+ * de embed69 antes de devolver la lista, de modo que el extractor arranca en el
+ * hoster final (voe, streamwish, vidhide) y no en la pagina del player.
  */
-export const SOURCES: SourceAdapter[] = [pelisplushd, cuevana3gs, lamovie];
+export const SOURCES: SourceAdapter[] = [pelisplushd, cuevana3gs, lamovie, sololatino];
 
 export const SOURCE_MAP = new Map(SOURCES.map((s) => [s.meta.id, s]));
 

@@ -25,8 +25,23 @@ Node local y lo apaga cuando la aplicación se cierra.
 - **Reproducción dentro de la app**, mediante proxies locales de imagen y de HLS
   que resuelven el problema de CORS de los CDN.
 - **Fichas de series** con temporadas y capítulos navegables.
+- **Búsqueda por género**: un catálogo fijo que se consulta en todas las fuentes a
+  la vez, con filtro por película, serie o anime.
+- **Favoritos e historial**, guardados en tu equipo (no en la nube) y con
+  «Continuar viendo» en la pantalla de inicio.
 - **Tema oscuro** fijo y **detalle técnico solo cuando algo falla**.
 - **Sin rastreadores, sin cuentas, sin publicidad.** Todo ocurre en tu equipo.
+
+## Capturas
+
+<p align="center">
+  <img src="docs/screenshots/inicio.png" width="49%" alt="Pantalla de inicio con «Continuar viendo» y los estrenos más recientes" />
+  <img src="docs/screenshots/busqueda.png" width="49%" alt="Búsqueda federada: los mismos resultados de las cuatro fuentes en una sola cuadrícula" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/ficha.png" width="49%" alt="Ficha de un título con sus servidores disponibles" />
+  <img src="docs/screenshots/reproductor.png" width="49%" alt="Reproductor integrado en la app, sin salir de ella" />
+</p>
 
 ## Fuentes soportadas
 
@@ -35,6 +50,7 @@ Node local y lo apaga cuando la aplicación se cierra.
 | PelisPlusHD | `pelisplushd` | HTML + navegador (URL calculada en JS ofuscado) |
 | Cuevana3 | `cuevana3` | API `/wp-api/v1` |
 | LaMovie | `lamovie` | API `/wp-api/v1` |
+| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) |
 
 > Las fuentes **rotan de dominio con frecuencia**. Miso resuelve en tiempo de
 > ejecución cuál de sus dominios conocidos está vivo, así que el dominio real no
@@ -75,6 +91,10 @@ Descarga el artefacto de la última release y ejecútalo:
   chmod +x Miso-0.1.0-x86_64.AppImage
   ./Miso-0.1.0-x86_64.AppImage
   ```
+
+  - Si al compilar prefieres un ejecutable suelto, la carpeta
+    `dist/release/linux-unpacked/` contiene un `miso` ya autocontenido (con
+    Chromium al lado). Es el modo recomendado en Linux: no depende de FUSE.
 
 Al abrir, Miso arranca su servidor local y muestra la pantalla de inicio con los
 estrenos y últimos capítulos más recientes.
@@ -160,6 +180,9 @@ Los artefactos se generan en `dist/release/`.
 │ Servidor Node local (Express, puerto 7345)     │
 │  · /api/search   búsqueda federada             │
 │  · /api/home     estrenos de las fuentes       │
+│  · /api/genres   catálogo de géneros           │
+│  · /api/genre    un género, federado           │
+│  · /api/library  historial y favoritos         │
 │  · /api/detail   ficha y servidores            │
 │  · /api/hls      proxy HLS                     │
 │  · /api/image    proxy de pósters              │
@@ -192,6 +215,9 @@ server/
   index.ts        Arranque del servidor Express y rutas
   search.ts       Búsqueda federada
   home.ts         Estrenos de las fuentes
+  genre.ts        Un género, federado
+  genres.ts       Catálogo de géneros
+  store.ts        Historial y favoritos (`.miso/library.json`)
   http.ts         Cliente HTTP común
   cache.ts        Caché en memoria con TTL
   sources/        Adaptadores por fuente

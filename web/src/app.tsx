@@ -2,27 +2,32 @@ import { useCallback, useEffect, useState } from 'react';
 import { sources } from './lib/api.js';
 import { isDesktop, useServer } from './lib/useServer.js';
 import type { SourceMeta, TitleCard } from './lib/types.js';
+import { AppHeader, type Seccion } from './ui/AppHeader.js';
 import { BottomBar } from './ui/BottomBar.js';
 import { DetailView } from './ui/DetailView.js';
+import { GenresView } from './ui/GenresView.js';
+import { LibraryView } from './ui/LibraryView.js';
 import { SearchView } from './ui/SearchView.js';
 import { Splash } from './ui/Splash.js';
 
 /**
  * Raiz de la aplicacion.
  *
- * Decide entre tres estados y poco mas: servidor apagado (arranque), servidor
- * en marcha (busqueda) y titulo abierto (detalle y reproduccion). No hay
- * enrutador porque en v1 no hay una tercera pantalla que justifique la
- * dependencia; la consulta viva en la URL para que el boton de atras del
- * sistema funcione como la gente espera.
+ * Dos decisiones que se ven en este archivo:
+ *
+ *  - El detalle no es una seccion de la navegacion, es una capa por encima.
+ *    `abierto` recuerda que titulo se esta viendo y al cerrarlo se vuelve a la
+ *    seccion donde se estaba, no siempre al inicio. Antes, volver del detalle
+ *    devolvia la busqueda aunque se hubiera llegado desde el historial.
+ *  - La cabecera vive fuera de las secciones. La marca y la navegacion son de
+ *    la aplicacion entera; solo el inicio tiene campo de busqueda.
  */
 
-type View = { kind: 'search' } | { kind: 'titulo'; card: TitleCard };
-
 export function App() {
-  const { status, start, stop, touch, versions } = useServer();
-  const [view, setView] = useState<View>({ kind: 'search' });
+  const { status, start, stop, versions } = useServer();
   const [metas, setMetas] = useState<SourceMeta[]>([]);
+  const [seccion, setSeccion] = useState<Seccion>('inicio');
+  const [abierto, setAbierto] = useState<TitleCard | null>(null);
 
   const accentBySource = Object.fromEntries(metas.map((m) => [m.id, m.accent]));
 
@@ -41,46 +46,60 @@ export function App() {
     };
   }, [status.state]);
 
-  // Actividad del usuario: alimenta los dos niveles de inactividad del proceso
-  // principal. Se escucha en fase de captura porque interesa cualquier
-  // interaccion, incluida la rueda sobre el video.
-  useEffect(() => {
-    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
-    for (const e of events) window.addEventListener(e, touch, { passive: true, capture: true });
-    return () => {
-      for (const e of events) window.removeEventListener(e, touch, { capture: true });
-    };
-  }, [touch]);
+  const open = useCallback((card: TitleCard) => setAbierto(card), []);
+  const close = useCallback(() => setAbierto(null), []);
 
-  const open = useCallback((card: TitleCard) => setView({ kind: 'titulo', card }), []);
-
-  const back = useCallback(() => {
-    setView({ kind: 'search' });
-  }, []);
-
-  const serverUp = status.state === 'en-funcionamiento' || status.state === 'suspendido';
+  const enArranque =
+    status.state === 'apagado' ||
+    status.state === 'error' ||
+    status.state === 'arrancando' ||
+    status.state === 'deteniendo';
 
   return (
     <div className="app">
-      {status.state === 'apagado' || status.state === 'error' ? (
+      {enArranque ? (
         <Splash status={status} versions={versions} onStart={() => void start()} />
-      ) : status.state === 'arrancando' || status.state === 'deteniendo' ? (
-        <Splash status={status} versions={versions} onStart={() => void start()} />
-      ) : view.kind === 'titulo' ? (
-        <DetailView card={view.card} accentBySource={accentBySource} onBack={back} />
       ) : (
-        <SearchView sources={metas} accentBySource={accentBySource} onOpen={open} />
+        <>
+          {/*
+           * El armazon NO se desmonta al abrir el detalle: se oculta.
+           *
+           * Antes esto era un `abierto ? detalle : armazon`, y cambiar de rama
+           * desmontaba la seccion entera. Al cerrar el detalle, React volvia a
+           * montar la seccion desde cero, con lo que la busqueda escrita y sus
+           * resultados desaparecian y aparecia el inicio. Ocultarlo con `hidden`
+           * conserva el estado (el texto del campo, la respuesta de las fuentes,
+           * la posicion) y al volver se ve exactamente lo que se estaba viendo.
+           */}
+          <div className="shell" hidden={abierto !== null}>
+            <AppHeader seccion={seccion} onSeccion={setSeccion} />
+            <main className="view">
+              {seccion === 'inicio' && (
+                <SearchView sources={metas} accentBySource={accentBySource} onOpen={open} />
+              )}
+              {seccion === 'generos' && (
+                <GenresView accentBySource={accentBySource} onOpen={open} />
+              )}
+              {seccion === 'favoritos' && (
+                <LibraryView tipo="favoritos" accentBySource={accentBySource} onOpen={open} />
+              )}
+              {seccion === 'historial' && (
+                <LibraryView tipo="historial" accentBySource={accentBySource} onOpen={open} />
+              )}
+            </main>
+          </div>
+
+          {abierto && (
+            <DetailView card={abierto} accentBySource={accentBySource} onBack={close} />
+          )}
+        </>
       )}
 
       <BottomBar
         status={status}
-        canStop={isDesktop && (status.state === 'en-funcionamiento' || status.state === 'suspendido')}
+        canStop={isDesktop && status.state === 'en-funcionamiento'}
         onStop={() => void stop()}
       />
-
-      {/* Durante una busqueda larga el proceso principal puede suspender el
-          navegador por inactividad; la interfaz tiene que poder despertarlo. */}
-      {serverUp && null}
     </div>
   );
 }
