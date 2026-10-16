@@ -47,6 +47,13 @@ Node local y lo apaga cuando la aplicación se cierra.
   <img src="docs/screenshots/reproductor.webp" width="49%" alt="Reproductor integrado en la app, sin salir de ella" />
 </p>
 
+### En móvil (Android)
+
+<p align="center">
+  <img src="docs/screenshots/movil-busqueda.webp" width="49%" alt="Búsqueda federada en pantalla vertical (Android)" />
+  <img src="docs/screenshots/movil-ficha.webp" width="49%" alt="Ficha del título en móvil" />
+</p>
+
 ## Fuentes soportadas
 
 | Fuente | Etiqueta | Extracción |
@@ -100,6 +107,18 @@ Descarga el artefacto de la última release y ejecútalo:
     `dist/release/linux-unpacked/` contiene un `miso` ya autocontenido (con
     Chromium al lado). Es el modo recomendado en Linux: no depende de FUSE.
 
+- **Android (Termux)** — sin APK. Usa el servidor en el propio teléfono.
+
+  1. Instala [Termux](https://f-droid.org/es/packages/com.termux/) (recomendado desde F-Droid).
+  2. Actualiza e instala Node: `pkg update && pkg install nodejs`
+  3. Da acceso a descargas: `termux-setup-storage`
+  4. Descomprime el paquete de Termux: `tar -xzf ~/storage/downloads/miso-termux-0.1.0.tar.gz -C ~`
+  5. Arranca: `sh ~/miso/miso.sh`
+
+  El script abre el navegador del teléfono en `http://127.0.0.1:7345`, guarda favoritos e historial en `~/.miso` y solicita un wake-lock mientras la app está en uso. Puedes añadirlo a la pantalla de inicio con Termux:Widget.
+
+  > En el paquete de Termux el navegador headless no está presente, así que los servidores que lo necesitan se omiten. El resto funciona sin cambios.
+
 Al abrir, Miso arranca su servidor local y muestra la pantalla de inicio con los
 estrenos y últimos capítulos más recientes.
 
@@ -122,7 +141,7 @@ estrenos y últimos capítulos más recientes.
 Los fallos del reproductor y del proxy de vídeo se anotan en un registro dentro
 de la carpeta de datos del usuario:
 
-- Linux: `~/.config/miso/miso.log`
+- Linux/Termux: `~/.config/miso/miso.log` (siempre que uses `MISO_USER_DATA` por defecto, Termux usa `~/.miso` para `MISO_USER_DATA=${MISO_USER_DATA:-$HOME/.miso}` en el lanzador; el registro va a `~/.miso/miso.log`).
 - Windows: `%APPDATA%\Miso\miso.log`
 
 ```bash
@@ -159,6 +178,7 @@ npm start
 | --- | --- |
 | `npm run dev` | Servidor de desarrollo con recarga en caliente. |
 | `npm run build` | Compila web, servidor y proceso de Electron. |
+| `npm run build:termux` | Genera el paquete de Termux (`dist/termux/miso-termux-*.tar.gz`). |
 | `npm start` | Abre la app de escritorio (`electron .`). |
 | `npm run typecheck` | Comprobación de tipos (servidor y web). |
 | `npm run check` | Comprobaciones offline de codificación y parsers. |

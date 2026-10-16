@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { ResolvedStream } from '../lib/types.js';
 
 /**
@@ -320,6 +320,23 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail }: Pro
 
   const nudge = useCallback((delta: number) => seek((videoRef.current?.currentTime ?? 0) + delta), [seek]);
 
+  /**
+   * Salta al punto de la barra donde esta el puntero.
+   *
+   * Se usa en el toque directo y en el arrastre. En el movil arrastrar es la
+   * forma natural de saltar, y sin capturar el puntero el gesto se pierde en
+   * cuanto el dedo sale del carril: por eso `onPointerMove` solo actua mientras
+   * la captura sigue viva.
+   */
+  const seekToPointer = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      seek(((e.clientX - rect.left) / rect.width) * (videoRef.current?.duration ?? 0));
+    },
+    [seek],
+  );
+
   const toggleFullscreen = useCallback(() => {
     const shell = shellRef.current;
     if (!shell) return;
@@ -461,8 +478,25 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail }: Pro
             if (e.key === 'ArrowLeft') nudge(-SKIP_SEC);
           }}
           onPointerDown={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            seek(((e.clientX - rect.left) / rect.width) * duration);
+            // Se captura el puntero para que el arrastre siga llegando aunque el
+            // dedo se salga del carril. En tactil, ademas, evita que el gesto se
+            // lo quede el desplazamiento de la pagina.
+            e.currentTarget.setPointerCapture(e.pointerId);
+            seekToPointer(e);
+          }}
+          onPointerMove={(e) => {
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+            seekToPointer(e);
+          }}
+          onPointerUp={(e) => {
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+          }}
+          onPointerCancel={(e) => {
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
           }}
         >
           <span className="vp-track-rail" />

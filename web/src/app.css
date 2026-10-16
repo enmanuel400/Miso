@@ -1830,6 +1830,53 @@ button {
 /* Adaptaciones                                                              */
 /* ======================================================================== */
 
+/* --- Tactil y huecos del sistema ---------------------------------------- */
+
+/* La cabecera respeta la muesca. `env()` vale 0 en el escritorio y en cualquier
+   navegador sin `viewport-fit=cover`, asi que fuera del movil no cambia nada. */
+.apphead {
+  padding-top: env(safe-area-inset-top);
+  height: calc(58px + env(safe-area-inset-top));
+}
+
+/* En pantalla completa horizontal la muesca queda a los lados: la barra del
+   reproductor tambien tiene que esquivarla. */
+.vp-bar {
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+}
+
+/* Media interfaz del escritorio depende del hover, y en una pantalla tactil no
+   hay hover. Lo que solo se descubria pasando el raton se queda a la vista; lo
+   que solo tenia sentido con el raton se apaga. */
+@media (hover: none) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* La estrella de favorito, fija: sin hover no habria forma de descubrirla. */
+  .card-fav {
+    opacity: 1;
+  }
+
+  /* El volumen lo manda el sistema; el deslizador propio ni se ve ni ocupa. */
+  .vp-volume {
+    display: none;
+  }
+
+  /* Tras un toque el hover se queda pegado y la tarjeta seguiria levantada: se
+     neutralizan las elevaciones que solo existen para el raton. */
+  .card-button:hover .card-art,
+  .card-button:focus-visible .card-art {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .primary:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
 @media (max-width: 900px) {
   .detail-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -1851,10 +1898,21 @@ button {
 }
 
 @media (max-width: 620px) {
+  /* En el movil el servidor es el propio telefono: la franja de estado no dice
+     nada y cuesta 40px de alto. Se retira y el cuerpo se queda la pantalla. */
+  .app {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .bottombar {
+    display: none;
+  }
+
   .search-head {
     flex-wrap: wrap;
     gap: 10px;
-    padding: 14px 18px 12px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 
   .wordmark,
@@ -1869,15 +1927,26 @@ button {
   .library-body,
   .detail-bar,
   .detail-grid {
-    padding-left: 18px;
-    padding-right: 18px;
+    padding-left: calc(18px + env(safe-area-inset-left));
+    padding-right: calc(18px + env(safe-area-inset-right));
+  }
+
+  /* La franja de gestos tapa el final de la lista: se le deja su hueco. */
+  .search-body,
+  .genres-body,
+  .library-body {
+    padding-bottom: calc(36px + env(safe-area-inset-bottom));
+  }
+
+  .detail-grid {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
 
   /* La barra de navegacion pierde las etiquetas antes que la marca: los iconos
      siguen distinguiendo las cuatro secciones y el texto es lo que menos cabe. */
   .apphead {
     gap: 12px;
-    padding: 0 18px;
+    padding: env(safe-area-inset-top) 18px 0;
   }
 
   .appnav-btn {
@@ -1891,6 +1960,68 @@ button {
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
     gap: 18px 12px;
+  }
+
+  /* Objetivos tactiles: los 26px de raton se quedan cortos con el dedo. */
+  .vp-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .vp-track {
+    height: 26px;
+  }
+
+  .vp-bar {
+    gap: 8px;
+    padding-top: 16px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .vp-time {
+    font-size: 12px;
+  }
+
+  .hist-del {
+    width: 34px;
+    height: 34px;
+  }
+
+  .chip {
+    padding: 8px 15px;
+  }
+
+  .segmented-btn {
+    padding: 7px 14px;
+  }
+
+  .hint {
+    margin: 28px auto;
+  }
+}
+
+/* Moviles pequenos en vertical: se recupera el ancho que se pueda. */
+@media (max-width: 380px) {
+  .apphead {
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+  }
+
+  .search-head,
+  .search-body,
+  .genres-head,
+  .genres-body,
+  .library-head,
+  .library-body,
+  .detail-bar,
+  .detail-grid {
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+    gap: 16px 10px;
   }
 }
 

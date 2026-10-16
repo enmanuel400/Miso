@@ -38,6 +38,19 @@ const IDLE: ServerStatus = {
   message: null,
 };
 
+/**
+ * Estado con el que arranca la interfaz.
+ *
+ * Dentro de Electron empieza apagado: el servidor lo arranca el usuario desde la
+ * pantalla de arranque. En el navegador, en cambio, la pagina la ha servido el
+ * propio servidor, asi que ya esta en marcha. Empezar en "apagado" haria
+ * parpadear la pantalla de arranque con un boton que ahi no arranca nada; la
+ * comprobacion de salud posterior solo puede confirmarlo o corregirlo.
+ */
+const INICIAL: ServerStatus = bridge
+  ? IDLE
+  : { state: 'en-funcionamiento', port: null, pid: null, message: null };
+
 export interface ServerController {
   status: ServerStatus;
   start(): Promise<void>;
@@ -53,7 +66,7 @@ export interface ServerController {
  * caso se deduce del endpoint de salud y los botones no se ofrecen.
  */
 export function useServer(): ServerController {
-  const [status, setStatus] = useState<ServerStatus>(IDLE);
+  const [status, setStatus] = useState<ServerStatus>(INICIAL);
   const [versions, setVersions] = useState<ServerController['versions']>(null);
   const known = useRef(false);
 

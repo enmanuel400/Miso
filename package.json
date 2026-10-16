@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "npm run build:web && npm run build:server && npm run build:electron",
+    "build:termux": "node scripts/build-termux.mjs",
     "check": "npm run check:encoding && npm run check:parsers",
     "check:encoding": "esbuild scripts/check-encoding.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-encoding.mjs --log-level=warning && node dist/tools/check-encoding.mjs",
     "check:parsers": "esbuild scripts/check-parsers.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-parsers.mjs --log-level=warning && node dist/tools/check-parsers.mjs",

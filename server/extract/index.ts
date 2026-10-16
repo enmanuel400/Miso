@@ -60,6 +60,17 @@ import { validateHls } from './validate.js';
 const TITLE_BUDGET_MS = 32_000;
 
 /**
+ * Si el paquete trae navegador.
+ *
+ * El escritorio lo trae siempre. El paquete de Termux no, porque Android no da
+ * un Chromium que Playwright pueda manejar: alli se apaga por entorno
+ * (`MISO_NO_BROWSER=1`). Con el navegador apagado la cascada termina en el paso
+ * estatico, asi que se pierden los servidores que dependen de el, pero los demas
+ * siguen resolviendo y el arranque no se rompe.
+ */
+const NAVEGADOR_DISPONIBLE = process.env.MISO_NO_BROWSER !== '1';
+
+/**
  * Techo por servidor dentro de un titulo.
  *
  * Sin esto, un solo hoster muerto se come el presupuesto entero. No es teoria:
@@ -208,7 +219,7 @@ export async function resolveStream(
     // uno es el del navegador: 25 s. Lo que imponen resolveTitle y la API, que
     // siempre pasan uno, llega por opts.
     budgetMs = 25_000,
-    allowBrowser = true,
+    allowBrowser = NAVEGADOR_DISPONIBLE,
     onTrace,
     onChallenge,
     visited = new Set<string>(),

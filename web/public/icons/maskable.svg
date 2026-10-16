@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Fuente de maskable-512.png. Fondo a sangre, sin esquinas redondeadas ni
+       transparencia, porque Android recorta este cuadrado con la forma que
+       quiera y la zona segura es solo el circulo del 80% central. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1b22"/>
+      <stop offset="1" stop-color="#08080a"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#f4d766"/>
+      <stop offset="0.55" stop-color="#d8ad2e"/>
+      <stop offset="1" stop-color="#a87c14"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256 256) scale(0.95) translate(-308.5 -225.5)">
+    <path d="M198 156 L368 256 L198 356 Z" fill="url(#gold)"/>
+    <path d="M384 98
+             c3.6 24 10 30.4 34 34
+             c-24 3.6 -30.4 10 -34 34
+             c-3.6 -24 -10 -30.4 -34 -34
+             c24 -3.6 30.4 -10 34 -34 Z"
+          fill="url(#gold)"/>
+  </g>
+</svg>
