@@ -18,13 +18,17 @@ export interface PlayableStream {
   url: string;
   type: ResolvedStream['type'];
   proxied?: boolean;
+  /** Segundo en el que reanudar tras una reconexion. Ausente en la carga normal. */
+  resumeAt?: number;
 }
 
 interface Props {
   stream: PlayableStream;
   title: string;
   poster: string | null;
-  onFail(motivo: string, trace: string[]): void;
+  /** Hay una reconexion en curso; se avisa sobre el propio video. */
+  reconnecting?: boolean;
+  onFail(motivo: string, trace: string[], enSegundo: number): void;
 }
 
 /** URL de reproduccion, ya pasada por el proxy cuando hace falta. */
@@ -37,7 +41,7 @@ function playbackUrl(stream: PlayableStream): string {
 
 const SKIP_SEC = 10;
 
-export function VideoPlayer({ stream, title, poster, onFail }: Props) {
+export function VideoPlayer({ stream, title, poster, reconnecting, onFail }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
 
@@ -51,10 +55,24 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
    */
   const onFailRef = useRef(onFail);
   onFailRef.current = onFail;
-  const avisarFallo = useCallback(
-    (motivo: string, trace: string[]) => onFailRef.current(motivo, trace),
-    [],
-  );
+
+  /**
+   * Un solo aviso por fuente.
+   *
+   * Un corte real dispara a la vez el error de hls.js y el del propio <video>.
+   * Sin este cerrojo, el padre recibiria dos peticiones de reconexion seguidas y
+   * lanzaria dos resoluciones para el mismo problema. Se rearma cuando entra una
+   * fuente nueva.
+   */
+  const reportado = useRef(false);
+  const avisarFallo = useCallback((motivo: string, trace: string[]) => {
+    if (reportado.current) return;
+    reportado.current = true;
+    // El segundo exacto es lo que permite reanudar donde se corto. Si el video
+    // no sabe su posicion todavia, se manda 0 y el padre no reconectara.
+    const t = videoRef.current?.currentTime;
+    onFailRef.current(motivo, trace, typeof t === 'number' && Number.isFinite(t) && t > 0 ? t : 0);
+  }, []);
 
   const [playing, setPlaying] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -68,6 +86,7 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
   const [engine, setEngine] = useState<string | null>(null);
 
   const url = playbackUrl(stream);
+  const resumeAt = stream.resumeAt ?? 0;
 
   // ---------------------------------------------------------------- motor
 
@@ -75,20 +94,41 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
     const video = videoRef.current;
     if (!video) return;
 
+    // Fuente nueva: el aviso anterior ya se consumio y hay que rearmarlo.
+    reportado.current = false;
+
     video.pause();
     setPlaying(false);
-    setCurrent(0);
+    setCurrent(resumeAt);
     setDuration(0);
     setBuffered(0);
+
+    // Reanudar donde iba tras una reconexion. La duracion puede no estar lista
+    // todavia en `loadedmetadata`, asi que se reintenta en `canplay`. Una sola
+    // vez, para no pelear con el usuario si decide moverse.
+    let saltado = resumeAt <= 0.5;
+    const alListo = () => {
+      if (saltado) return;
+      const d = video.duration;
+      if (Number.isFinite(d) && d > 0 && resumeAt < d) {
+        video.currentTime = resumeAt;
+        saltado = true;
+      }
+    };
+    video.addEventListener('loadedmetadata', alListo);
+    video.addEventListener('canplay', alListo);
 
     if (stream.type !== 'hls') {
       video.src = url;
       void video.play().catch(() => undefined);
       setEngine('directo');
-      return;
+      return () => {
+        video.removeEventListener('loadedmetadata', alListo);
+        video.removeEventListener('canplay', alListo);
+      };
     }
 
-    let hls: { destroy(): void } | null = null;
+    let hls: { destroy(): void; startLoad(): void; recoverMediaError(): void } | null = null;
     let cancelled = false;
 
     void import('hls.js')
@@ -114,11 +154,35 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
             fragLoadingTimeOut: 45_000,
           });
 
+          // Un error fatal de red (enlace caducado, CDN que corta) se intenta
+          // reanimar una vez con `startLoad` antes de rendirse; los de medios se
+          // recuperan reconstruyendo el decodificador. Solo si eso no basta se
+          // avisa al padre, que es quien puede volver a resolver y reanudar.
+          // Los contadores son por fuente: una reconexion los reinicia.
+          let reintentosRed = 0;
+          let reintentosMedios = 0;
+
           instance.loadSource(url);
           instance.attachMedia(video);
-          instance.on(Hls.Events.ERROR, (_e: unknown, data: { fatal: boolean; details?: string }) => {
-            if (data.fatal) avisarFallo(`Fallo de reproducción: ${data.details ?? 'desconocido'}`, []);
-          });
+          instance.on(
+            Hls.Events.ERROR,
+            (_e: unknown, data: { fatal?: boolean; type?: string; details?: string }) => {
+              if (!data.fatal) return;
+
+              if (data.type === Hls.ErrorTypes.MEDIA_ERROR && reintentosMedios < 2) {
+                reintentosMedios += 1;
+                instance.recoverMediaError();
+                return;
+              }
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && reintentosRed < 1) {
+                reintentosRed += 1;
+                instance.startLoad();
+                return;
+              }
+
+              avisarFallo(`Fallo de reproducción: ${data.details ?? 'desconocido'}`, []);
+            },
+          );
 
           hls = instance;
           setEngine('hls.js');
@@ -140,9 +204,11 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
 
     return () => {
       cancelled = true;
+      video.removeEventListener('loadedmetadata', alListo);
+      video.removeEventListener('canplay', alListo);
       hls?.destroy();
     };
-  }, [url, stream.type, avisarFallo]);
+  }, [url, stream.type, resumeAt, avisarFallo]);
 
   // ------------------------------------------------------------- progreso
 
@@ -170,16 +236,21 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
     // hace nada y ninguna explicacion.
     const onError = () => {
       const code = video.error?.code;
+
+      // code 1 es MEDIA_ERR_ABORTED. Salta al cambiar de fuente o al destruir el
+      // motor y no es un fallo: si se tratara como tal, cada reconexion acabaria
+      // en la pantalla de error por el simple hecho de descartar el reproductor
+      // viejo.
+      if (code === 1) return;
+
       const motivo =
-        code === 1
-          ? 'la reproducción se canceló'
-          : code === 2
-            ? 'no se pudo leer el vídeo desde el servidor'
-            : code === 3
-              ? 'no se pudo descifrar el vídeo'
-              : code === 4
-                ? 'el formato del vídeo no es compatible'
-                : 'el vídeo no se pudo reproducir';
+        code === 2
+          ? 'no se pudo leer el vídeo desde el servidor'
+          : code === 3
+            ? 'no se pudo descifrar el vídeo'
+            : code === 4
+              ? 'el formato del vídeo no es compatible'
+              : 'el vídeo no se pudo reproducir';
       avisarFallo(`No se pudo reproducir: ${motivo}.`, []);
     };
 
@@ -338,11 +409,22 @@ export function VideoPlayer({ stream, title, poster, onFail }: Props) {
         </button>
       )}
 
-      {waiting && (
-        <div className="vp-buffering" role="status">
+      {reconnecting ? (
+        <div className="vp-reconnect" role="status">
           <span className="stage-spinner" aria-hidden="true" />
-          <span>Cargando vídeo…</span>
+          <p className="vp-reconnect-title">Reconectando…</p>
+          <p className="vp-reconnect-sub">
+            Se cortó la conexión con el servidor de vídeo. Buscando un enlace nuevo para seguir desde
+            donde ibas.
+          </p>
         </div>
+      ) : (
+        waiting && (
+          <div className="vp-buffering" role="status">
+            <span className="stage-spinner" aria-hidden="true" />
+            <span>Cargando vídeo…</span>
+          </div>
+        )
       )}
 
       <div className="vp-bar">

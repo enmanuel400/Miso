@@ -24,11 +24,15 @@ Node local y lo apaga cuando la aplicación se cierra.
 - **El nombre de la fuente siempre visible** en cada tarjeta.
 - **Reproducción dentro de la app**, mediante proxies locales de imagen y de HLS
   que resuelven el problema de CORS de los CDN.
+- **Reconexión automática**: si el enlace del servidor caduca a mitad de película,
+  la app vuelve a resolver el mismo servidor, obtiene uno fresco y **continúa
+  desde donde ibas**, sin devolverte a elegir servidor.
 - **Fichas de series** con temporadas y capítulos navegables.
 - **Búsqueda por género**: un catálogo fijo que se consulta en todas las fuentes a
   la vez, con filtro por película, serie o anime.
-- **Favoritos e historial**, guardados en tu equipo (no en la nube) y con
-  «Continuar viendo» en la pantalla de inicio.
+- **Favoritos e historial**, guardados en la carpeta de datos de tu usuario (no en
+  la nube) y con «Continuar viendo» en la pantalla de inicio. Sobreviven al cierre
+  de la aplicación.
 - **Tema oscuro** fijo y **detalle técnico solo cuando algo falla**.
 - **Sin rastreadores, sin cuentas, sin publicidad.** Todo ocurre en tu equipo.
 
@@ -108,7 +112,27 @@ estrenos y últimos capítulos más recientes.
    título, se listan como servidores alternativos.
 4. En series, elige temporada y capítulo.
 5. Pulsa **Reproducir**. El vídeo se abre dentro de la app.
-6. Si un servidor falla, la app prueba el siguiente automáticamente.
+6. Si un servidor falla al abrir, la app prueba el siguiente automáticamente.
+7. Si el enlace caduca mientras ves algo, la app se reconecta sola y continúa
+   desde el mismo punto. Durante ese momento verás **«Reconectando…»** sobre el
+   vídeo.
+
+### Diagnóstico
+
+Los fallos del reproductor y del proxy de vídeo se anotan en un registro dentro
+de la carpeta de datos del usuario:
+
+- Linux: `~/.config/miso/miso.log`
+- Windows: `%APPDATA%\Miso\miso.log`
+
+```bash
+tail -f ~/.config/miso/miso.log
+```
+
+Es lo primero que conviene mirar si algo deja de reproducirse: indica si el origen
+respondió `403`/`504`, si devolvió HTML en vez de un manifiesto o si fue el propio
+reproductor el que se rindió. El estado de la biblioteca también se puede consultar
+en `GET /api/health` (campo `library`).
 
 ---
 
@@ -183,6 +207,7 @@ Los artefactos se generan en `dist/release/`.
 │  · /api/genres   catálogo de géneros           │
 │  · /api/genre    un género, federado           │
 │  · /api/library  historial y favoritos         │
+│  · /api/log      diagnóstico del reproductor   │
 │  · /api/detail   ficha y servidores            │
 │  · /api/hls      proxy HLS                     │
 │  · /api/image    proxy de pósters              │
@@ -217,7 +242,8 @@ server/
   home.ts         Estrenos de las fuentes
   genre.ts        Un género, federado
   genres.ts       Catálogo de géneros
-  store.ts        Historial y favoritos (`.miso/library.json`)
+  store.ts        Historial y favoritos (`library.json`, carpeta de datos)
+  log.ts          Registro de diagnóstico (`miso.log`)
   http.ts         Cliente HTTP común
   cache.ts        Caché en memoria con TTL
   sources/        Adaptadores por fuente
@@ -232,7 +258,8 @@ scripts/          Comprobaciones y utilidades de desarrollo
 ## Limitaciones conocidas
 
 - **Los hosters caducan y rotan.** Cuando una fuente dice que el fichero ya no
-  existe, no hay nada que extraer; Miso prueba el siguiente servidor.
+  existe, no hay nada que extraer; Miso prueba el siguiente servidor. Si el enlace
+  caduca mientras ves algo, se reconecta solo y reanuda donde ibas.
 - **Algunos hosts bloquean peticiones automatizadas** (respuesta 403). Miso no
   desactiva la seguridad del navegador ni sortea protecciones; en esos casos
   intenta otro servidor o deja el enlace para abrir la página original.

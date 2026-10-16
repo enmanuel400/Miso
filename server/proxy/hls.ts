@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { assertPublicUrl, ProxyBlockedError, upstreamHeaders } from './guard.js';
+import { logEvent } from '../log.js';
 
 /**
  * Proxy de streaming HLS.
@@ -16,6 +17,21 @@ import { assertPublicUrl, ProxyBlockedError, upstreamHeaders } from './guard.js'
  */
 
 const MANIFEST_RE = /\.m3u8(?:$|\?)/i;
+
+/**
+ * Registro a lo sumo una vez por segundo.
+ *
+ * Cuando un enlace caduca, el reproductor sigue pidiendo segmentos y todos
+ * fallan con el mismo 403. Sin este tope, un corte a mitad de pelicula llenaria
+ * el registro de miles de lineas identicas y taparia el resto.
+ */
+let ultimoRegistroHls = 0;
+function registrar(host: string, path: string, mensaje: string): void {
+  const ahora = Date.now();
+  if (ahora - ultimoRegistroHls < 1000) return;
+  ultimoRegistroHls = ahora;
+  logEvent('hls', mensaje, `${host}${path}`);
+}
 
 /** Reconstruye una URL del proxy para un recurso del manifiesto. */
 function proxyUrl(target: string, referer: string | null): string {
@@ -101,6 +117,7 @@ export async function hlsProxy(req: Request, res: Response): Promise<void> {
     });
 
     if (!upstream.ok) {
+      registrar(target.host, target.pathname, `origen devolvio ${upstream.status}`);
       res.status(502).json({ error: `origen devolvio ${upstream.status}` });
       return;
     }
@@ -142,6 +159,7 @@ export async function hlsProxy(req: Request, res: Response): Promise<void> {
     // avisamos con codigo 502 y un mensaje legible en vez de pasarle HTML al
     // reproductor, que solo produciria un error de sintaxis incomprensible.
     if (/^\s*<(!doctype|html)/i.test(text)) {
+      registrar(target.host, target.pathname, 'el origen devolvio HTML en vez de un manifiesto');
       res.status(502).json({ error: 'el origen no devolvio un manifiesto HLS', detail: 'posible enlace caducado' });
       return;
     }
@@ -152,9 +170,11 @@ export async function hlsProxy(req: Request, res: Response): Promise<void> {
     res.send(rewritten);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
+      registrar(target.host, target.pathname, 'el origen tardo mas de 25 s');
       res.status(504).json({ error: 'el origen tardo demasiado' });
       return;
     }
+    registrar(target.host, target.pathname, `fallo al traer el recurso: ${err instanceof Error ? err.message : String(err)}`);
     res.status(502).json({
       error: 'fallo al traer el recurso',
       detail: err instanceof Error ? err.message : String(err),

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,10 +71,41 @@ export function resolvePath(...segments: string[]): string {
   return path.join(repoRoot, ...segments);
 }
 
+/**
+ * Carpeta de datos del usuario: biblioteca (historial y favoritos) y registros.
+ *
+ * El orden de prioridad importa:
+ *
+ *   1. `MISO_USER_DATA`, que inyecta el proceso principal de Electron con
+ *      `app.getPath('userData')`. Es la unica ruta correcta cuando la aplicacion
+ *      va empaquetada.
+ *   2. Si el servidor vive dentro de un `app.asar` (empaquetado pero nadie paso
+ *      la variable) se busca un directorio escribible del usuario. Dentro del
+ *      asar NO se puede escribir: sin este respaldo los favoritos se guardaban
+ *      solo en memoria y desaparecian al cerrar, sin ningun error visible.
+ *   3. En desarrollo, `repo/.miso`, que es comodo y ya se usaba.
+ */
+function resolveUserData(): string {
+  if (process.env.MISO_USER_DATA) return process.env.MISO_USER_DATA;
+
+  if (repoRoot.includes('.asar')) {
+    const base =
+      process.env.XDG_CONFIG_HOME ||
+      (process.platform === 'win32'
+        ? process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
+        : process.platform === 'darwin'
+          ? path.join(os.homedir(), 'Library', 'Application Support')
+          : path.join(os.homedir(), '.config'));
+    return path.join(base, 'miso');
+  }
+
+  return path.join(repoRoot, '.miso');
+}
+
 export const PATHS = {
   repoRoot,
   /** Donde Electron guarda configuracion, logs y cache entre sesiones. */
-  userData: process.env.MISO_USER_DATA || path.join(repoRoot, '.miso'),
+  userData: resolveUserData(),
   /** Assets web ya compilados, servidos por el propio servidor en produccion. */
   webDist: path.join(repoRoot, 'dist', 'web'),
 } as const;

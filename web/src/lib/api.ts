@@ -90,13 +90,35 @@ export function title(
   id: string,
   signal: AbortSignal,
   pos?: EpisodeRef | null,
+  preferServer?: string | null,
 ): Promise<TitleResponse> {
   const base = `/api/title/${encodeURIComponent(source)}/${id.split('/').map(encodeURIComponent).join('/')}`;
-  const query =
-    pos && Number.isInteger(pos.season) && Number.isInteger(pos.episode)
-      ? `?season=${pos.season}&episode=${pos.episode}`
-      : '';
+  const params = new URLSearchParams();
+  if (pos && Number.isInteger(pos.season) && Number.isInteger(pos.episode)) {
+    params.set('season', String(pos.season));
+    params.set('episode', String(pos.episode));
+  }
+  if (preferServer) params.set('prefer', preferServer);
+  const query = params.toString() ? `?${params.toString()}` : '';
   return request<TitleResponse>(base + query, { signal });
+}
+
+/**
+ * Reporta un fallo del reproductor al registro del servidor.
+ *
+ * Es "dispara y olvida" a proposito: si el servidor no esta o la peticion falla,
+ * el problema original sigue siendo el que importa. Nunca lanza.
+ */
+export function report(scope: string, message: string, detail?: string): void {
+  try {
+    void fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope, message, detail: detail ?? null }),
+    }).catch(() => undefined);
+  } catch {
+    /* el diagnostico no puede romper la reproduccion */
+  }
 }
 
 /**

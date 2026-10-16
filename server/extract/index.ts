@@ -140,6 +140,14 @@ export interface ResolveOptions {
   referer?: string;
   /** Etiqueta del servidor elegido, para mostrarla en el reproductor. */
   serverLabel?: string | null;
+  /**
+   * Id del servidor que hay que probar primero.
+   *
+   * Lo usa la reconexion: cuando la reproduccion se corta a mitad, interesa
+   * volver al mismo servidor que se estaba viendo y no aterrizar en otro
+   * cualquiera. Si ese servidor ya no esta, el resto de la lista sigue intacto.
+   */
+  preferServer?: string | null;
   budgetMs?: number;
   /** Si es false no se permite arrancar el navegador headless. */
   allowBrowser?: boolean;
@@ -611,6 +619,15 @@ export async function resolveTitle(
   // que el usuario espera es el tiempo que tardamos en PROBARLOS.
   const deadline = Date.now() + TITLE_BUDGET_MS;
 
+  // La reconexion manda: si venimos de un servidor concreto, se prueba ese
+  // primero. El resto conserva su orden original.
+  const ordenados = opts.preferServer
+    ? [
+        ...candidates.filter((c) => c.id === opts.preferServer),
+        ...candidates.filter((c) => c.id !== opts.preferServer),
+      ]
+    : candidates;
+
   // IMPORTANTE: no nos quedamos con el primer servidor. Estas fuentes mezclan
   // reproductores que funcionan con otros rotos, y ningun ranking razonable
   // sabe cual es cual hasta que lo prueba. Probamos en orden y nos quedamos
@@ -619,7 +636,7 @@ export async function resolveTitle(
   // El bucle se detiene por tiempo, no por numero. Lo que no se ha probado se
   // cuenta y se dice: es la unica forma de que un fallo siga siendo honesto
   // cuando la lista es larga.
-  for (const candidate of candidates) {
+  for (const candidate of ordenados) {
     if (Date.now() > deadline) {
       trace?.(
         `presupuesto agotado: se probaron ${attempts.length} de ${candidates.length} ` +

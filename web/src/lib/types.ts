@@ -68,6 +68,11 @@ export type PlaybackState =
        * aqui produce una peticion a un CDN que no contesta por CORS.
        */
       proxied: boolean;
+      /**
+       * Segundo en el que hay que reanudar, cuando el stream se ha vuelto a
+       * resolver tras un corte. Ausente en una reproduccion normal.
+       */
+      resumeAt?: number;
     }
   | {
       phase: 'fallo';

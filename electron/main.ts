@@ -198,6 +198,13 @@ async function startServer(): Promise<Status> {
       ELECTRON_RUN_AS_NODE: '1',
       MISO_PORT: String(port),
       MISO_DESKTOP: '1',
+      // Carpeta de datos del usuario para el servidor. Es imprescindible que la
+      // ponga el proceso principal: el servidor va dentro de `app.asar`, que es
+      // de solo lectura, asi que sin esto intentaba escribir la biblioteca dentro
+      // del paquete, fallaba en silencio y favoritos e historial se perdian en
+      // cada cierre. `getPath` da la carpeta escribible que Electron ya usa
+      // (~/.config/miso en Linux, %APPDATA%/miso en Windows).
+      MISO_USER_DATA: app.getPath('userData'),
     },
     // `detached` crea un grupo de proceso propio: es lo que permite despues
     // matar a Chromium y a sus hijos con una sola llamada.

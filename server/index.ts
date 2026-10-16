@@ -11,7 +11,8 @@ import { resolveTitle, resolveStream, closeBrowser, isBrowserRunning } from './e
 import { imageProxy } from './proxy/image.js';
 import { hlsProxy } from './proxy/hls.js';
 import { cacheClear, cacheStats } from './cache.js';
-import { readLibrary, recordHistory, forgetHistory, toggleFavorite, sanitize } from './store.js';
+import { readLibrary, recordHistory, forgetHistory, toggleFavorite, sanitize, libraryStatus } from './store.js';
+import { logEvent } from './log.js';
 import { HttpError } from './http.js';
 import type { EpisodeRef } from './sources/types.js';
 
@@ -35,7 +36,31 @@ export function createServer() {
       uptimeSec: Math.floor(process.uptime()),
       browser: isBrowserRunning(),
       memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      // Estado de la biblioteca. Si `error` no es null, los favoritos y el
+      // historial no se estan guardando; verlo aqui es la unica forma de
+      // enterarse desde la aplicacion empaquetada.
+      library: libraryStatus(),
     });
+  });
+
+  /**
+   * Reporte de errores del reproductor.
+   *
+   * El navegador no tiene forma de escribir en el registro del servidor, y los
+   * cortes de reproduccion ocurren en el cliente. Este endpoint los deja en
+   * `miso.log` para poder diagnosticarlos despues.
+   */
+  app.post('/api/log', (req, res) => {
+    const { scope, message, detail } = (req.body ?? {}) as {
+      scope?: unknown;
+      message?: unknown;
+      detail?: unknown;
+    };
+    if (typeof message === 'string' && message.trim()) {
+      const ambito = typeof scope === 'string' && scope.trim() ? scope.trim() : 'cliente';
+      logEvent(ambito, message.slice(0, 500), typeof detail === 'string' ? detail.slice(0, 500) : undefined);
+    }
+    res.json({ ok: true });
   });
 
   app.get('/api/sources', (_req, res) => {
@@ -219,8 +244,10 @@ export function createServer() {
 
     const trace: string[] = [];
     try {
+      const prefer = typeof req.query.prefer === 'string' ? req.query.prefer : null;
       const result = await resolveTitle(source, id, {
         pos: capituloDe(req as unknown as { query: Record<string, unknown> }),
+        preferServer: prefer,
         onTrace: (m) => trace.push(m),
       });
 

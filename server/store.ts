@@ -36,6 +36,16 @@ interface Library {
 
 let cache: Library | null = null;
 
+/**
+ * Ultimo error de escritura, si lo hubo.
+ *
+ * Existe para que un fallo al guardar deje de ser invisible: antes solo se
+ * escribia en `stderr`, que en la aplicacion empaquetada no lo lee nadie, y el
+ * usuario veia como los favoritos se esfumaban en cada cierre sin ninguna pista.
+ * Se expone en `/api/health`.
+ */
+let ultimoError: string | null = null;
+
 function empty(): Library {
   return { version: 1, history: [], favorites: [] };
 }
@@ -70,11 +80,24 @@ function save(lib: Library): void {
     const tmp = `${FILE}.tmp`;
     writeFileSync(tmp, JSON.stringify(lib), 'utf8');
     renameSync(tmp, FILE);
+    ultimoError = null;
   } catch (err) {
     // El estado en memoria ya cambio; perder la escritura es malo pero no debe
-    // tumbar la peticion que la provoco.
-    process.stderr.write(`[miso] no se pudo guardar la biblioteca: ${String(err)}\n`);
+    // tumbar la peticion que la provoco. Se guarda el motivo para poder
+    // denunciarlo despues, en lugar de perderlo en un stderr que nadie lee.
+    ultimoError = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[miso] no se pudo guardar la biblioteca: ${ultimoError}\n`);
   }
+}
+
+/**
+ * Estado del fichero de biblioteca, para diagnostico.
+ *
+ * `error` en null significa que la ultima escritura fue bien (o que aun no se
+ * ha escrito nada, que no es un problema: se crea de forma perezosa).
+ */
+export function libraryStatus(): { file: string; error: string | null } {
+  return { file: FILE, error: ultimoError };
 }
 
 /**

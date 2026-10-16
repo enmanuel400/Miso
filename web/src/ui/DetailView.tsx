@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, resolve, title as fetchTitle } from '../lib/api.js';
+import { ApiError, report, resolve, title as fetchTitle } from '../lib/api.js';
 import { recordHistory, toggleFavorite, useLibrary } from '../lib/library.js';
 import { IconStar } from './Icons.js';
 import type {
@@ -41,6 +41,25 @@ const KIND_LABEL: Record<string, string> = {
   series: 'Serie',
   anime: 'Anime',
 };
+
+/**
+ * Reconexion automatica.
+ *
+ * Los enlaces de estos hosters caducan a los veinte o treinta minutos: los
+ * segmentos empiezan a devolver 403, hls.js se rinde y, sin esto, la aplicacion
+ * mandaba a elegir servidor otra vez. Ahora se vuelve a resolver el mismo titulo
+ * (que produce un enlace fresco) y se reanuda donde iba.
+ *
+ *   - MIN: por debajo de este segundo no se reconecta. Un fallo al arrancar es
+ *     otra cosa y se enseña tal cual.
+ *   - MAX: intentos consecutivos. Si un enlace nuevo muere enseguida, no se
+ *     entra en bucle.
+ *   - SALUDABLE: si el enlace sobrevivio esta cantidad de segundos, el contador
+ *     se reinicia. Un corte cada media hora es caducidad, no un bucle.
+ */
+const RECONEXION_MIN_SEC = 30;
+const RECONEXION_MAX = 3;
+const RECONEXION_SALUDABLE_SEC = 300;
 
 /**
  * Una entrada por fuente, y solo una.
@@ -94,6 +113,20 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
    */
   const [probados, setProbados] = useState<string[]>([]);
 
+  /**
+   * Reconexion en curso.
+   *
+   * Es un booleano y no un estado de reproduccion porque el reproductor se deja
+   * montado y congelado debajo del aviso: desmontarlo lo haria parpadear y
+   * perderia el fotograma que el usuario estaba viendo.
+   */
+  const [recuperando, setRecuperando] = useState(false);
+
+  /** Intentos consecutivos, para no entrar en un bucle de reconexiones. */
+  const intentos = useRef(0);
+  /** Cerrojo sincrono: evita que el reproductor viejo dispare dos recuperaciones. */
+  const recuperandoRef = useRef(false);
+
   // Cambiar de fuente cambia de pagina de origen: el detalle, los capitulos y los
   // servidores no tienen nada que ver con los de otra. El capitulo vuelve al que
   // traia la entrada, porque es la unica pista que hay de donde venia.
@@ -140,6 +173,10 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
     abort.current = ctl;
 
     startedAt.current = performance.now();
+    // Fuente o capitulo nuevo: la cuenta de reconexiones vuelve a cero.
+    intentos.current = 0;
+    recuperandoRef.current = false;
+    setRecuperando(false);
     setPlayback({ phase: 'iniciando' });
     setDetail(null);
 
@@ -220,6 +257,8 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
       setServerId(server.id);
       setPlayback({ phase: 'iniciando' });
       startedAt.current = performance.now();
+      // Elegir servidor a mano reinicia la cuenta de reconexiones.
+      intentos.current = 0;
 
       setProbados((prev) => {
         if (prev.includes(server.id)) return prev;
@@ -266,6 +305,97 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
       }
     },
     [detail],
+  );
+
+  /**
+   * Vuelve a resolver el titulo para conseguir un enlace fresco y reanudar.
+   *
+   * Se pide el mismo servidor (`preferServer`) para no cambiar de reproductor
+   * sin motivo; si ese ya no responde, el extractor prueba los demas.
+   */
+  const recuperar = useCallback(
+    async (enSegundo: number) => {
+      recuperandoRef.current = true;
+      setRecuperando(true);
+
+      abort.current?.abort();
+      const ctl = new AbortController();
+      abort.current = ctl;
+
+      try {
+        const data = await fetchTitle(entry.source, entry.id, ctl.signal, pos, serverId);
+        if (ctl.signal.aborted) return;
+
+        if (!data.stream) {
+          recuperandoRef.current = false;
+          setRecuperando(false);
+          setPlayback(
+            fallo(
+              resumenDeFallos(data.attempts, data.sinProbar),
+              data.trace,
+              data.attempts,
+              probados,
+              data.detail.url,
+            ),
+          );
+          return;
+        }
+
+        // El servidor puede habernos movido a otro reproductor: se refresca el
+        // detalle para que el boton resaltado y el capitulo sigan siendo ciertos.
+        setDetail(data.detail);
+        setServerId(data.serverId);
+        recuperandoRef.current = false;
+        setRecuperando(false);
+        // `data.stream` es un stream real, asi que `toPlayback` da el caso
+        // 'listo'; el guardia es para el tipo, porque la union admite los otros.
+        const listo = toPlayback(data.stream, data.detail.url, data);
+        setPlayback(listo.phase === 'listo' ? { ...listo, resumeAt: enSegundo } : listo);
+      } catch (err) {
+        if (ctl.signal.aborted) return;
+        recuperandoRef.current = false;
+        setRecuperando(false);
+        setPlayback(
+          fallo(
+            'Se cortó la reproducción y no se pudo reconectar.',
+            err instanceof ApiError ? err.trace : [],
+            [],
+            probados,
+            detail?.url ?? null,
+          ),
+        );
+      }
+    },
+    [entry.source, entry.id, pos, serverId, probados, detail],
+  );
+
+  /**
+   * El reproductor se ha caido a mitad. Antes de rendirse, se reconecta.
+   *
+   * Solo se intenta si ya habia reproduccion avanzada (`enSegundo`): un fallo al
+   * arrancar es un servidor que no sirve, y eso se enseña, no se reintenta en
+   * bucle.
+   */
+  const manejarFalloReproductor = useCallback(
+    (motivo: string, trace: string[], enSegundo: number) => {
+      // Ya hay una reconexion en marcha: este aviso viene del reproductor viejo.
+      if (recuperandoRef.current) return;
+
+      report('reproductor', motivo, `t=${Math.round(enSegundo)}s`);
+
+      const base = playback.phase === 'listo' ? (playback.resumeAt ?? 0) : 0;
+      const reproducido = Math.max(0, enSegundo - base);
+      if (reproducido >= RECONEXION_SALUDABLE_SEC) intentos.current = 0;
+
+      if (enSegundo >= RECONEXION_MIN_SEC && intentos.current < RECONEXION_MAX) {
+        intentos.current += 1;
+        void recuperar(enSegundo);
+        return;
+      }
+
+      setPlayback(fallo(motivo, trace, [], probados, detail?.url ?? null));
+    },
+    [playback, probados, detail, recuperar],
   );
 
   const title = detail?.title ?? card.title;
@@ -431,7 +561,8 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
               state={playback}
               title={title}
               poster={poster}
-              onFail={(m, tr) => setPlayback(fallo(m, tr, [], probados, detail?.url ?? null))}
+              reconnecting={recuperando}
+              onFail={manejarFalloReproductor}
             />
           )}
 
@@ -674,14 +805,24 @@ function PlayerBridge({
   state,
   title,
   poster,
+  reconnecting,
   onFail,
 }: {
   state: Extract<PlaybackState, { phase: 'listo' }>;
   title: string;
   poster: string | null;
-  onFail(motivo: string, trace: string[]): void;
+  reconnecting: boolean;
+  onFail(motivo: string, trace: string[], enSegundo: number): void;
 }) {
-  return <VideoPlayer stream={state} title={title} poster={poster} onFail={onFail} />;
+  return (
+    <VideoPlayer
+      stream={state}
+      title={title}
+      poster={poster}
+      reconnecting={reconnecting}
+      onFail={onFail}
+    />
+  );
 }
 
 /**
