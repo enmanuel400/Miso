@@ -1,22 +1,69 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-function resolveChromiumExecutable(): string | undefined {
-  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.PLAYWRIGHT_EXECUTABLE_PATH) {
-    return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+/**
+ * Busca un ejecutable por nombre dentro de un arbol de directorios.
+ *
+ * Los nombres de las carpetas de Chromium cambian entre versiones de Playwright
+ * y entre sistemas (`chrome-linux64`, `chrome-linux`, `chrome-win64`, ...) y la
+ * carpeta raiz lleva la version pegada (`chromium-1243`). En vez de fijar esos
+ * nombres —y romperse en la siguiente actualizacion o al empaquetar para otro
+ * sistema operativo— se recorre el arbol hasta dar con el binario.
+ */
+function buscarEjecutable(dir: string, nombre: string, profundidad = 4): string | undefined {
+  let entradas: string[];
+  try {
+    entradas = readdirSync(dir);
+  } catch {
+    return undefined;
   }
 
-  const resources = (process as unknown as { resourcesPath?: string }).resourcesPath;
-  if (resources) {
-    const exe = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
-    const p = path.join(resources, 'playwright', 'chromium-1243', process.platform === 'win32' ? 'chrome-win64' : 'chrome-linux64', exe);
+  for (const entrada of entradas) {
+    const ruta = path.join(dir, entrada);
+    let esDirectorio = false;
     try {
-      const fs = require('node:fs');
-      if (fs.existsSync(p)) return p;
-    } catch {}
-    return p;
+      esDirectorio = statSync(ruta).isDirectory();
+    } catch {
+      continue;
+    }
+
+    if (!esDirectorio) {
+      if (entrada === nombre) return ruta;
+      continue;
+    }
+
+    if (profundidad > 0) {
+      const encontrado = buscarEjecutable(ruta, nombre, profundidad - 1);
+      if (encontrado) return encontrado;
+    }
   }
+
   return undefined;
+}
+
+/**
+ * Ruta del Chromium que hay que lanzar.
+ *
+ * En desarrollo devuelve `undefined` a proposito: sin Electron no hay
+ * `resourcesPath` y Playwright tira de su propio registro de navegadores, que es
+ * lo que uno espera tras `npx playwright install chromium`.
+ *
+ * Empaquetada, la aplicacion copia el navegador a `resources/playwright/chromium`
+ * con `scripts/stage-playwright.mjs`, de modo que la ruta no depende de la
+ * carpeta personal de quien compilo. Antes aqui estaba `chromium-1243` fijo y en
+ * Windows la subcarpeta se llamaba distinto, asi que el binario no se encontraba.
+ */
+function resolveChromiumExecutable(): string | undefined {
+  const desdeEntorno =
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+  if (desdeEntorno) return desdeEntorno;
+
+  const resources = (process as unknown as { resourcesPath?: string }).resourcesPath;
+  if (!resources) return undefined;
+
+  const nombre = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+  return buscarEjecutable(path.join(resources, 'playwright'), nombre);
 }
 import type { PlaybackServer } from '../sources/types.js';
 import { classifyStream } from './static.js';

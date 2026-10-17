@@ -107,18 +107,6 @@ Descarga el artefacto de la última release y ejecútalo:
     `dist/release/linux-unpacked/` contiene un `miso` ya autocontenido (con
     Chromium al lado). Es el modo recomendado en Linux: no depende de FUSE.
 
-- **Android (Termux)** — sin APK. Usa el servidor en el propio teléfono.
-
-  1. Instala [Termux](https://f-droid.org/es/packages/com.termux/) (recomendado desde F-Droid).
-  2. Actualiza e instala Node: `pkg update && pkg install nodejs`
-  3. Da acceso a descargas: `termux-setup-storage`
-  4. Descomprime el paquete de Termux: `tar -xzf ~/storage/downloads/miso-termux-0.1.0.tar.gz -C ~`
-  5. Arranca: `sh ~/miso/miso.sh`
-
-  El script abre el navegador del teléfono en `http://127.0.0.1:7345`, guarda favoritos e historial en `~/.miso` y solicita un wake-lock mientras la app está en uso. Puedes añadirlo a la pantalla de inicio con Termux:Widget.
-
-  > En el paquete de Termux el navegador headless no está presente, así que los servidores que lo necesitan se omiten. El resto funciona sin cambios.
-
 Al abrir, Miso arranca su servidor local y muestra la pantalla de inicio con los
 estrenos y últimos capítulos más recientes.
 
@@ -135,13 +123,17 @@ estrenos y últimos capítulos más recientes.
 7. Si el enlace caduca mientras ves algo, la app se reconecta sola y continúa
    desde el mismo punto. Durante ese momento verás **«Reconectando…»** sobre el
    vídeo.
+8. En **Ajustes** (el engranaje, arriba a la derecha) puedes activar o desactivar
+   fuentes. Lo que desactives deja de aparecer en el inicio, en las búsquedas y
+   en los géneros; el historial y los favoritos no se tocan. Siempre queda al
+   menos una fuente activa.
 
 ### Diagnóstico
 
 Los fallos del reproductor y del proxy de vídeo se anotan en un registro dentro
 de la carpeta de datos del usuario:
 
-- Linux/Termux: `~/.config/miso/miso.log` (siempre que uses `MISO_USER_DATA` por defecto, Termux usa `~/.miso` para `MISO_USER_DATA=${MISO_USER_DATA:-$HOME/.miso}` en el lanzador; el registro va a `~/.miso/miso.log`).
+- Linux: `~/.config/miso/miso.log`.
 - Windows: `%APPDATA%\Miso\miso.log`
 
 ```bash
@@ -177,8 +169,8 @@ npm start
 | Script | Qué hace |
 | --- | --- |
 | `npm run dev` | Servidor de desarrollo con recarga en caliente. |
-| `npm run build` | Compila web, servidor y proceso de Electron. |
-| `npm run build:termux` | Genera el paquete de Termux (`dist/termux/miso-termux-*.tar.gz`). |
+| `npm run build` | Compila web, servidor y proceso de Electron, y prepara Chromium para el empaquetado. |
+| `npm run stage:playwright` | Copia Chromium a `dist/playwright/` desde la caché de Playwright de esta máquina. |
 | `npm start` | Abre la app de escritorio (`electron .`). |
 | `npm run typecheck` | Comprobación de tipos (servidor y web). |
 | `npm run check` | Comprobaciones offline de codificación y parsers. |
@@ -204,10 +196,13 @@ npx electron-builder --win            # NSIS + portable (requiere Windows o wine
 
 Los artefactos se generan en `dist/release/`.
 
-> **Nota:** la configuración de `package.json` (`build.extraResources`) copia
-> Chromium desde la caché local de Playwright. Para empaquetar en otra máquina,
-> ajusta esas rutas o define el ejecutable con la variable de entorno
-> `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+> **Nota:** `npm run build` ejecuta `stage:playwright`, que localiza Chromium en
+> la caché de Playwright de la máquina (respetando `PLAYWRIGHT_BROWSERS_PATH`) y
+> lo copia a `dist/playwright/`. Después, `electron-builder` lo empaqueta desde
+> ahí, así que no hay rutas absolutas que ajustar al compilar en Windows. Si la
+> caché está vacía, el paso avisa y el paquete sale sin navegador: los servidores
+> que lo necesitan se omiten hasta que ejecutes `npx playwright install chromium`.
+> El ejecutable también se puede forzar con `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
 
 ---
 

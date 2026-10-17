@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SERVER_PORT, PATHS, PROXY_ALLOWLIST } from './config.js';
-import { SOURCES, sourceMeta, getSource } from './sources/index.js';
+import { SOURCES, activeSources, sourceMeta, getSource } from './sources/index.js';
 import { searchAll } from './search.js';
 import { homeAll } from './home.js';
 import { GENRES, findGenre } from './genres.js';
@@ -12,6 +12,7 @@ import { imageProxy } from './proxy/image.js';
 import { hlsProxy } from './proxy/hls.js';
 import { cacheClear, cacheStats } from './cache.js';
 import { readLibrary, recordHistory, forgetHistory, toggleFavorite, sanitize, libraryStatus } from './store.js';
+import { isSourceEnabled, setSourceEnabled, settingsStatus } from './settings.js';
 import { logEvent } from './log.js';
 import { HttpError } from './http.js';
 import type { EpisodeRef } from './sources/types.js';
@@ -40,6 +41,9 @@ export function createServer() {
       // historial no se estan guardando; verlo aqui es la unica forma de
       // enterarse desde la aplicacion empaquetada.
       library: libraryStatus(),
+      // Lo mismo para los ajustes: un fallo al guardar las fuentes desactivadas
+      // se veria como "cambie el ajuste y volvio solo al reiniciar".
+      settings: settingsStatus(),
     });
   });
 
@@ -65,6 +69,37 @@ export function createServer() {
 
   app.get('/api/sources', (_req, res) => {
     res.json({ sources: sourceMeta(), allowlist: PROXY_ALLOWLIST });
+  });
+
+  /**
+   * Activa o desactiva una fuente.
+   *
+   * El cambio se guarda en el servidor y no en el navegador: asi vale tambien la
+   * proxima vez que se abra la aplicacion, aunque se limpie la cache. Ademas se
+   * vacia la cache de respuestas, porque las que habia se calcularon con el
+   * juego de fuentes anterior y ensenarian resultados de una fuente ya apagada.
+   */
+  app.post('/api/sources/config', (req, res) => {
+    const { id, enabled } = (req.body ?? {}) as { id?: unknown; enabled?: unknown };
+
+    if (typeof id !== 'string' || !getSource(id)) {
+      res.status(400).json({ error: `fuente desconocida: ${String(id)}` });
+      return;
+    }
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled tiene que ser un booleano' });
+      return;
+    }
+    // Apagar la ultima fuente dejaria la aplicacion sin nada que consultar.
+    if (!enabled && isSourceEnabled(id) && activeSources().length === 1) {
+      res.status(409).json({ error: 'tiene que quedar al menos una fuente activa' });
+      return;
+    }
+
+    setSourceEnabled(id, enabled);
+    cacheClear();
+    logEvent('ajustes', `${enabled ? 'activada' : 'desactivada'} la fuente ${id}`);
+    res.json({ sources: sourceMeta() });
   });
 
   app.get('/api/stats', (_req, res) => {

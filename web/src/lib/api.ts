@@ -5,7 +5,7 @@ import type {
   ResolvedStream,
   SavedTitle,
   ServerStatus,
-  SourceMeta,
+  SourceInfo,
   TitleResponse,
 } from './types.js';
 
@@ -141,8 +141,24 @@ export function resolve(
   });
 }
 
-export function sources(): Promise<{ sources: SourceMeta[] }> {
+/** Catalogo de fuentes con su estado de activacion, para la pantalla de ajustes. */
+export function sources(): Promise<{ sources: SourceInfo[] }> {
   return request('/api/sources');
+}
+
+/**
+ * Activa o desactiva una fuente.
+ *
+ * Devuelve el catalogo entero ya actualizado y no solo la fuente tocada: el
+ * servidor vacia su cache al cambiar, y la interfaz quiere el estado definitivo
+ * para no quedar desincronizada si otra cosa cambio a la vez.
+ */
+export function setSource(id: string, enabled: boolean): Promise<{ sources: SourceInfo[] }> {
+  return request('/api/sources/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, enabled }),
+  });
 }
 
 // -------------------------------------------------------------------- generos

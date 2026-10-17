@@ -12,8 +12,7 @@
   "main": "dist/electron/main.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "npm run build:web && npm run build:server && npm run build:electron",
-    "build:termux": "node scripts/build-termux.mjs",
+    "build": "npm run build:web && npm run build:server && npm run build:electron && npm run stage:playwright",
     "check": "npm run check:encoding && npm run check:parsers",
     "check:encoding": "esbuild scripts/check-encoding.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-encoding.mjs --log-level=warning && node dist/tools/check-encoding.mjs",
     "check:parsers": "esbuild scripts/check-parsers.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-parsers.mjs --log-level=warning && node dist/tools/check-parsers.mjs",
@@ -22,7 +21,9 @@
     "check:vivo": "esbuild scripts/check-vivo.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/tools/check-vivo.mjs --log-level=warning && node dist/tools/check-vivo.mjs",
     "build:web": "vite build --config web/vite.config.ts",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server.mjs",
+
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=cjs --target=node22 --packages=external --outfile=dist/electron/main.cjs --log-level=warning && esbuild electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --packages=external --outfile=dist/electron/preload.cjs --log-level=warning && node scripts/copy-assets.mjs",
+    "stage:playwright": "node scripts/stage-playwright.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
     "start": "electron .",
     "postinstall:browsers": "playwright install chromium"
@@ -65,12 +66,12 @@
         "to": "tools"
       },
       {
-        "from": "/home/demon0/.cache/ms-playwright/chromium-1243",
-        "to": "playwright/chromium-1243"
+        "from": "dist/playwright/chromium",
+        "to": "playwright/chromium"
       },
       {
-        "from": "/home/demon0/.cache/ms-playwright/chromium_headless_shell-1243",
-        "to": "playwright/chromium_headless_shell-1243"
+        "from": "dist/playwright/chromium-headless-shell",
+        "to": "playwright/chromium-headless-shell"
       }
     ],
     "directories": {

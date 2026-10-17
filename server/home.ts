@@ -1,5 +1,5 @@
 import type { AggregatedSearch, SearchResult, SourceId, SourceStatus } from './sources/types.js';
-import { SOURCES, resolveDomain } from './sources/index.js';
+import { activeSources, resolveDomain } from './sources/index.js';
 import { entrelazar } from './sources/shared.js';
 import { briefSourceError } from './errors.js';
 import { cacheGet, cacheSet } from './cache.js';
@@ -52,7 +52,7 @@ export async function homeAll(): Promise<AggregatedSearch> {
   const cached = cacheGet<AggregatedSearch>(cacheKey);
   if (cached) return cached;
 
-  const conHome = SOURCES.filter((s) => s.fetchHome);
+  const conHome = activeSources().filter((s) => s.fetchHome);
 
   // El sondeo es una preferencia para acertar con el dominio bueno, no una parte
   // del trabajo, asi que se queda con su propio techo corto. Lo que viene

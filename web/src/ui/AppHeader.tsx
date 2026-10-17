@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { LogoMark } from './Logo.js';
-import { IconGenres, IconHistory, IconHome, IconStar } from './Icons.js';
+import { IconGenres, IconHistory, IconHome, IconSettings, IconStar } from './Icons.js';
 
 /**
  * Cabecera unica de la aplicacion.
@@ -11,7 +11,7 @@ import { IconGenres, IconHistory, IconHome, IconStar } from './Icons.js';
  * habria cuatro sitios donde olvidarse de actualizarlo.
  */
 
-export type Seccion = 'inicio' | 'generos' | 'favoritos' | 'historial';
+export type Seccion = 'inicio' | 'generos' | 'favoritos' | 'historial' | 'ajustes';
 
 interface Props {
   seccion: Seccion;
@@ -23,6 +23,7 @@ const ITEMS: { id: Seccion; label: string; Icono: ComponentType<{ size?: number 
   { id: 'generos', label: 'Géneros', Icono: IconGenres },
   { id: 'favoritos', label: 'Favoritos', Icono: IconStar },
   { id: 'historial', label: 'Historial', Icono: IconHistory },
+  { id: 'ajustes', label: 'Ajustes', Icono: IconSettings },
 ];
 
 export function AppHeader({ seccion, onSeccion }: Props) {

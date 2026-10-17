@@ -1,13 +1,18 @@
 import type { SourceAdapter } from './shared.js';
+import type { SourceInfo } from './types.js';
 import { pelisplushd } from './pelisplushd.js';
 import { cuevana3gs } from './cuevana3gs.js';
 import { lamovie } from './lamovie.js';
 import { sololatino } from './sololatino.js';
 import { fetchText } from '../http.js';
 import { cacheGet, cacheSet } from '../cache.js';
+import { isSourceEnabled } from '../settings.js';
 
 /**
- * Fuentes activas.
+ * Catalogo de fuentes.
+ *
+ * Es la lista completa, no la que se consulta: que fuentes estan encendidas lo
+ * resuelve `activeSources()` mas abajo, segun los ajustes del usuario.
  *
  * Se retiraron repelisplus y pelisflix. Las dos buscaban bien, pero sus
  * reproductores estaban muertos en cadena: repelisplus iba watchfun.top ->
@@ -63,8 +68,24 @@ export function getSource(id: string): SourceAdapter | undefined {
   return SOURCE_MAP.get(id);
 }
 
-export function sourceMeta() {
-  return SOURCES.map((s) => s.meta);
+/**
+ * Fuentes que el usuario tiene activas.
+ *
+ * Es la lista que consultan la busqueda, el inicio y los generos. Se resuelve en
+ * cada peticion y no una vez al arrancar: cambiar los ajustes tiene que surtir
+ * efecto sin reiniciar el servidor.
+ *
+ * `getSource` sigue mirando el catalogo completo a proposito. Un titulo guardado
+ * en favoritos de una fuente recien desactivada tiene que poder abrirse; lo que
+ * no debe es volver a aparecer en las busquedas.
+ */
+export function activeSources(): SourceAdapter[] {
+  return SOURCES.filter((s) => isSourceEnabled(s.meta.id));
+}
+
+/** El catalogo completo con el estado de activacion, para los ajustes. */
+export function sourceMeta(): SourceInfo[] {
+  return SOURCES.map((s) => ({ ...s.meta, enabled: isSourceEnabled(s.meta.id) }));
 }
 
 const DOMAIN_TTL = 10 * 60 * 1000;

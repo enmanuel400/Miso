@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { sources } from './lib/api.js';
 import { isDesktop, useServer } from './lib/useServer.js';
-import type { SourceMeta, TitleCard } from './lib/types.js';
+import type { SourceInfo, TitleCard } from './lib/types.js';
 import { AppHeader, type Seccion } from './ui/AppHeader.js';
 import { BottomBar } from './ui/BottomBar.js';
 import { DetailView } from './ui/DetailView.js';
 import { GenresView } from './ui/GenresView.js';
 import { LibraryView } from './ui/LibraryView.js';
 import { SearchView } from './ui/SearchView.js';
+import { SettingsView } from './ui/SettingsView.js';
 import { Splash } from './ui/Splash.js';
 
 /**
@@ -25,7 +26,7 @@ import { Splash } from './ui/Splash.js';
 
 export function App() {
   const { status, start, stop, versions } = useServer();
-  const [metas, setMetas] = useState<SourceMeta[]>([]);
+  const [metas, setMetas] = useState<SourceInfo[]>([]);
   const [seccion, setSeccion] = useState<Seccion>('inicio');
   const [abierto, setAbierto] = useState<TitleCard | null>(null);
 
@@ -86,6 +87,7 @@ export function App() {
               {seccion === 'historial' && (
                 <LibraryView tipo="historial" accentBySource={accentBySource} onOpen={open} />
               )}
+              {seccion === 'ajustes' && <SettingsView sources={metas} onChange={setMetas} />}
             </main>
           </div>
 

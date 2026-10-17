@@ -126,6 +126,18 @@ export interface SourceMeta {
   accent: string;
 }
 
+/**
+ * Una fuente con su estado de activacion, para la pantalla de ajustes.
+ *
+ * `enabled` no forma parte de `SourceMeta` a proposito: el adaptador describe la
+ * fuente (id, etiqueta, color), mientras que activarla o no es un ajuste del
+ * usuario que decide el servidor en tiempo de ejecucion.
+ */
+export interface SourceInfo extends SourceMeta {
+  enabled: boolean;
+}
+
+
 export type SourceStatus =
   | { state: 'ok'; count: number; ms: number }
   | { state: 'error'; message: string; ms: number }

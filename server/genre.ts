@@ -1,6 +1,6 @@
 import type { AggregatedSearch, MediaKind, SearchResult, SourceStatus } from './sources/types.js';
 import type { Genre } from './genres.js';
-import { SOURCES, resolveDomain } from './sources/index.js';
+import { activeSources, resolveDomain } from './sources/index.js';
 import { briefSourceError } from './errors.js';
 import { cacheGet, cacheSet } from './cache.js';
 
@@ -56,7 +56,7 @@ export async function genreAll(genre: Genre, kind: MediaKind | null): Promise<Ag
   const cached = cacheGet<AggregatedSearch>(cacheKey);
   if (cached) return cached;
 
-  const fuentes = SOURCES.filter((s) => typeof s.fetchByGenre === 'function');
+  const fuentes = activeSources().filter((s) => typeof s.fetchByGenre === 'function');
   const probeBudget = Math.floor(PER_SOURCE_TIMEOUT / 3);
 
   const settled = await Promise.allSettled(

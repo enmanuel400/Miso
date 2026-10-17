@@ -1,5 +1,5 @@
 import type { AggregatedSearch, SearchResult, SourceId, SourceStatus } from './sources/types.js';
-import { SOURCES, resolveDomain } from './sources/index.js';
+import { activeSources, resolveDomain, type SourceAdapter } from './sources/index.js';
 import { fetchText } from './http.js';
 import { briefSourceError } from './errors.js';
 import { cacheGet, cacheSet } from './cache.js';
@@ -21,7 +21,7 @@ const SEARCH_TTL = 5 * 60 * 1000;
  */
 const PER_SOURCE_TIMEOUT = 6_000;
 
-async function searchOne(source: (typeof SOURCES)[number], query: string): Promise<{
+async function searchOne(source: SourceAdapter, query: string): Promise<{
   results: SearchResult[];
   status: SourceStatus;
 }> {
@@ -79,15 +79,19 @@ export async function searchAll(query: string): Promise<AggregatedSearch> {
   const cached = cacheGet<AggregatedSearch>(cacheKey);
   if (cached) return cached;
 
+  // Solo las fuentes activas: las desactivadas en los ajustes no gastan tiempo
+  // de red ni aparecen en el informe de fuentes.
+  const fuentes = activeSources();
+
   const settled = await Promise.allSettled(
-    SOURCES.map((source) => searchOne(source, trimmed)),
+    fuentes.map((source) => searchOne(source, trimmed)),
   );
 
   const results: SearchResult[] = [];
   const bySource: Record<SourceId, SourceStatus> = {};
 
   settled.forEach((outcome, i) => {
-    const source = SOURCES[i];
+    const source = fuentes[i];
     if (outcome.status === 'fulfilled') {
       results.push(...outcome.value.results);
       bySource[source.meta.id] = outcome.value.status;

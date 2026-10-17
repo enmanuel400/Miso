@@ -1827,6 +1827,143 @@ button {
 }
 
 /* ======================================================================== */
+/* Ajustes                                                                   */
+/* ======================================================================== */
+
+.ajustes {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.ajustes-head {
+  padding: 2px 30px 0;
+}
+
+.ajustes .home-title {
+  margin-top: 20px;
+}
+
+.ajustes .hint {
+  margin: 8px 0 0;
+  max-width: none;
+  text-align: left;
+}
+
+.ajustes-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 30px 40px;
+  scrollbar-color: #2a2a32 transparent;
+}
+
+.ajustes-titulo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 26px 0 14px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ajustes-cuenta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--dim);
+}
+
+.ajustes-lista {
+  max-width: 540px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Una fila por fuente, sin caja: la linea ya separa, igual que en el resto de la
+   app, donde las tarjetas no llevan borde. */
+.ajuste {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.ajuste-punto {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.ajuste-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.ajuste-label {
+  font-size: 14px;
+}
+
+.ajuste-id {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* Interruptor. Un control de dos estados, no una casilla: es lo que mejor dice
+   "esto esta encendido o apagado" de un vistazo. */
+.switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised-2);
+  cursor: pointer;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.switch[data-on] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.switch-pin {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dim);
+  transform: translateY(-50%);
+  transition: transform 160ms ease-out, background-color 160ms ease-out;
+}
+
+.switch[data-on] .switch-pin {
+  background: var(--accent);
+  transform: translate(20px, -50%);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ======================================================================== */
 /* Adaptaciones                                                              */
 /* ======================================================================== */
 
@@ -1925,6 +2062,8 @@ button {
   .genres-body,
   .library-head,
   .library-body,
+  .ajustes-head,
+  .ajustes-body,
   .detail-bar,
   .detail-grid {
     padding-left: calc(18px + env(safe-area-inset-left));
@@ -1934,7 +2073,8 @@ button {
   /* La franja de gestos tapa el final de la lista: se le deja su hueco. */
   .search-body,
   .genres-body,
-  .library-body {
+  .library-body,
+  .ajustes-body {
     padding-bottom: calc(36px + env(safe-area-inset-bottom));
   }
 
