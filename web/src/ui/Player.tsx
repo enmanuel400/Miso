@@ -29,6 +29,14 @@ interface Props {
   /** Hay una reconexion en curso; se avisa sobre el propio video. */
   reconnecting?: boolean;
   onFail(motivo: string, trace: string[], enSegundo: number): void;
+  /**
+   * Posicion actual, para que el detalle la guarde en el historial.
+   *
+   * Se llama con moderacion (no en cada fotograma) porque el padre escribe en
+   * disco al recibirla: un aviso cada pocos segundos basta para no perder el
+   * sitio y evita castigar el JSON.
+   */
+  onProgress?(seconds: number, duration: number | null): void;
 }
 
 /** URL de reproduccion, ya pasada por el proxy cuando hace falta. */
@@ -41,9 +49,26 @@ function playbackUrl(stream: PlayableStream): string {
 
 const SKIP_SEC = 10;
 
-export function VideoPlayer({ stream, title, poster, reconnecting, onFail }: Props) {
+export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onProgress }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Aviso de progreso, guardado en ref por la misma razon que `onFail`: el padre
+   * lo pasa como funcion suelta y cambia de identidad en cada render.
+   */
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
+
+  /**
+   * Ultimo segundo avisado al padre, para no repetir escrituras.
+   *
+   * El umbral es de 10 s de reproduccion real: con `timeupdate` disparando unas
+   * cuatro veces por segundo, avisar cada vez serian cientos de escrituras al
+   * JSON por capitulo. Ademas de caro, es inutil: perder diez segundos de
+   * posicion no cambia donde retoma el usuario.
+   */
+  const ultimoAviso = useRef(-Infinity);
 
   /**
    * El aviso de fallo se guarda en una ref y no en una dependencia.
@@ -87,6 +112,26 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail }: Pro
 
   const url = playbackUrl(stream);
   const resumeAt = stream.resumeAt ?? 0;
+
+  /**
+   * Al desmontar, fija la posicion una ultima vez.
+   *
+   * Cerrar el detalle o cambiar de titulo desmonta el reproductor sin pasar por
+   * una pausa que llegue a tiempo, asi que este es el ultimo instante en el que
+   * el `<video>` aun existe y sabe donde iba. El efecto no depende de nada: se
+   * registra una sola vez y su limpieza corre justo al salir.
+   */
+  useEffect(() => {
+    return () => {
+      const video = videoRef.current;
+      const fn = onProgressRef.current;
+      if (!video || !fn) return;
+      const t = video.currentTime;
+      if (!Number.isFinite(t) || t <= 0.5) return;
+      const d = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+      fn(t, d);
+    };
+  }, []);
 
   // ---------------------------------------------------------------- motor
 
@@ -216,10 +261,29 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail }: Pro
     const video = videoRef.current;
     if (!video) return;
 
-    const onTime = () => setCurrent(video.currentTime);
+    const avisarProgreso = (forzar: boolean) => {
+      const fn = onProgressRef.current;
+      if (!fn) return;
+      const t = video.currentTime;
+      if (!Number.isFinite(t) || t <= 0) return;
+      if (!forzar && Math.abs(t - ultimoAviso.current) < 10) return;
+      ultimoAviso.current = t;
+      const d = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+      fn(t, d);
+    };
+
+    const onTime = () => {
+      setCurrent(video.currentTime);
+      avisarProgreso(false);
+    };
     const onMeta = () => setDuration(Number.isFinite(video.duration) ? video.duration : 0);
     const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPause = () => {
+      setPlaying(false);
+      // La pausa es el momento natural para fijar la posicion: es justo cuando
+      // el usuario deja de mirar y a menudo cuando cierra o cambia de pantalla.
+      avisarProgreso(true);
+    };
     const onWaiting = () => setWaiting(true);
     const onPlaying = () => setWaiting(false);
     const onVolume = () => {

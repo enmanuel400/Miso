@@ -6,8 +6,10 @@ import type {
   Attempt,
   EpisodeInfo,
   EpisodeRef,
+  PlaybackProgress,
   PlaybackState,
   ResolvedStream,
+  SavedTitle,
   SearchResult,
   SeriesIndex,
   TitleCard,
@@ -34,6 +36,14 @@ interface Props {
   card: TitleCard;
   accentBySource: Record<string, string>;
   onBack(): void;
+  /**
+   * Entrada guardada del historial, si se abrio desde ahi.
+   *
+   * Trae la temporada, el capitulo y el minuto en el que se dejo. Sin esto, abrir
+   * un titulo empezado obligaria a elegir el capitulo a mano y a tantear por donde
+   * iba, que es justo lo que esta memoria viene a evitar.
+   */
+  saved?: SavedTitle | null;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -83,8 +93,21 @@ function porFuente(entries: readonly SearchResult[]): {
   return { ids: [...mapa.keys()], mapa };
 }
 
-export function DetailView({ card, accentBySource, onBack }: Props) {
-  const [entry, setEntry] = useState(card.entries[0]);
+export function DetailView({ card, accentBySource, onBack, saved }: Props) {
+  /**
+   * Entrada a la que se abre.
+   *
+   * Si el historial recuerda la fuente con la que se vio, se abre esa y no la
+   * primera de la tarjeta: el titulo puede estar en varias fuentes y volver a la
+   * de siempre evita que el capitulo guardado no exista en otra.
+   */
+  const [entry, setEntry] = useState(() => {
+    if (saved?.last) {
+      const misma = card.entries.find((e) => e.source === saved.card.entries[0]?.source);
+      if (misma) return misma;
+    }
+    return card.entries[0];
+  });
   const { ids: fuentes, mapa: entradasPorFuente } = porFuente(card.entries);
   const [detail, setDetail] = useState<TitleDetail | null>(null);
   const [playback, setPlayback] = useState<PlaybackState>({ phase: 'iniciando' });
@@ -101,8 +124,36 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
    * capitulo de la primera temporada y lo dice en la traza. Guardar el valor
    * pedido y no el recibido evita que la interfaz se desincronice con lo que se
    * esta viendo.
+   *
+   * El historial manda sobre la primera entrada de la tarjeta: si se dejo la serie
+   * en T3E7, se abre en T3E7 y no en el primer capitulo de la lista.
    */
-  const [pos, setPos] = useState<EpisodeRef | null>(card.entries[0].episode ?? null);
+  const [pos, setPos] = useState<EpisodeRef | null>(saved?.last ?? card.entries[0].episode ?? null);
+
+  /**
+   * Segundo del que hay que reanudar, una sola vez.
+   *
+   * Se consume al primer montaje del reproductor en el capitulo guardado y se
+   * limpia en cuanto el usuario cambia de capitulo: reanudar T3E7 es correcto,
+   * pero al saltar a T3E8 arrancar en el minuto del anterior seria un salto
+   * absurdo. Se guarda en estado y no en ref para que el reproductor lo vea al
+   * montar y desmonte cuando ya no aplica.
+   */
+  const [resumeAt, setResumeAt] = useState<number | null>(() => {
+    const p = saved?.progress;
+    return p && p.seconds > 0 ? p.seconds : null;
+  });
+
+  /**
+   * Espejo de `resumeAt` para el efecto de carga.
+   *
+   * El efecto que resuelve el titulo no puede depender de `resumeAt`: si lo
+   * hiciera, limpiar el minuto tras usarlo volveria a resolver todo el titulo y
+   * arrancaria un segundo navegador sin cabeza solo para no reanudar. La ref le
+   * deja leer el valor del momento sin entrar en las dependencias.
+   */
+  const resumeAtRef = useRef(resumeAt);
+  resumeAtRef.current = resumeAt;
 
   /**
    * Servidores que ya se fallaron, en este montaje.
@@ -133,6 +184,8 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
   const pickSource = useCallback((e: SearchResult) => {
     setEntry(e);
     setPos(e.episode ?? null);
+    // Fuente nueva: el minuto guardado era de otra, asi que no se reanuda.
+    setResumeAt(null);
   }, []);
 
   /**
@@ -147,12 +200,24 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
     setProbados([]);
     setServerId(null);
     setPos(next);
+    // Cambiar de capitulo invalida el minuto del anterior.
+    setResumeAt(null);
   }, []);
 
   const posKey = pos ? `${pos.season}:${pos.episode}` : '';
 
   const { favorites } = useLibrary();
   const favorito = favorites.some((f) => f.key === card.key);
+
+  /**
+   * Ultimo progreso conocido, en ref.
+   *
+   * El historial se reescribe al cambiar de capitulo (para recordar por donde
+   * iba), y en ese momento el progreso pertinente es el del capitulo que se
+   * acaba de dejar, no el nuevo. Sin esta ref, el efecto de abajo guardaria la
+   * posicion nueva con `progress: null` y borraria el minuto recien guardado.
+   */
+  const progresoRef = useRef<PlaybackProgress | null>(saved?.progress ?? null);
 
   /*
    * Abrir el titulo ya es "haberlo visto": no esperamos a que haya imagen para
@@ -161,8 +226,24 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
    * es la tarjeta agrupada, asi que reabrir mueve al frente en vez de duplicar.
    */
   useEffect(() => {
-    recordHistory(card, pos);
+    recordHistory(card, pos, progresoRef.current);
   }, [card, pos]);
+
+  /**
+   * Guarda el avance del reproductor.
+   *
+   * Llega con moderacion (el reproductor solo avisa cada diez segundos, en pausa
+   * y al salir) para no escribir el JSON en cada fotograma. Se guarda en la ref y
+   * se vuelca al historial sin tocar `pos`: cambiar de capitulo reescribe la
+   * entrada y ese volcado tiene que seguir viendo el progreso.
+   */
+  const guardarProgreso = useCallback(
+    (seconds: number, duration: number | null) => {
+      progresoRef.current = { seconds: Math.round(seconds), duration };
+      recordHistory(card, pos, progresoRef.current);
+    },
+    [card, pos],
+  );
 
   // Carga el detalle y deja que el servidor elija el servidor que funciona.
   // Una sola pasada para la fuente y el capitulo: los dos entran en la misma
@@ -212,7 +293,16 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
           for (const a of data.attempts) tried.add(a.serverId);
           return [...tried];
         });
-        setPlayback(toPlayback(data.stream, data.detail.url, data));
+        const listo = toPlayback(data.stream, data.detail.url, data);
+        // Reanudar donde se dejo: solo aplica a la primera carga del capitulo
+        // guardado. Al cambiar de capitulo `resumeAt` ya es null y esto no hace
+        // nada, que es lo correcto.
+        const arranque = resumeAtRef.current;
+        setPlayback(
+          listo.phase === 'listo' && arranque && arranque > 0
+            ? { ...listo, resumeAt: arranque }
+            : listo,
+        );
       } catch (err) {
         if (ctl.signal.aborted) return;
         setPlayback(
@@ -563,6 +653,7 @@ export function DetailView({ card, accentBySource, onBack }: Props) {
               poster={poster}
               reconnecting={recuperando}
               onFail={manejarFalloReproductor}
+              onProgress={guardarProgreso}
             />
           )}
 
@@ -807,12 +898,14 @@ function PlayerBridge({
   poster,
   reconnecting,
   onFail,
+  onProgress,
 }: {
   state: Extract<PlaybackState, { phase: 'listo' }>;
   title: string;
   poster: string | null;
   reconnecting: boolean;
   onFail(motivo: string, trace: string[], enSegundo: number): void;
+  onProgress(seconds: number, duration: number | null): void;
 }) {
   return (
     <VideoPlayer
@@ -821,6 +914,7 @@ function PlayerBridge({
       poster={poster}
       reconnecting={reconnecting}
       onFail={onFail}
+      onProgress={onProgress}
     />
   );
 }

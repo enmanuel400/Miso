@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { PATHS } from './config.js';
-import type { EpisodeRef, SavedTitle, TitleCard } from './sources/types.js';
+import type { EpisodeRef, PlaybackProgress, SavedTitle, TitleCard } from './sources/types.js';
 
 /**
  * Biblioteca local: historial y favoritos.
@@ -119,15 +119,34 @@ function isSavedTitle(value: unknown): value is SavedTitle {
   );
 }
 
+/**
+ * Normaliza la posicion de reproduccion guardada.
+ *
+ * Se acepta solo un segundo finito y no negativo: un NaN o un negativo (que
+ * llegan si el reproductor se movio antes de tener metadatos) rompería el
+ * calculo de la barra sin aportar nada. `duration` puede faltar y sigue siendo
+ * valida la entrada, porque hay fuentes que no la anuncian.
+ */
+function sanitizeProgress(input: unknown): PlaybackProgress | null {
+  if (!input || typeof input !== 'object') return null;
+  const p = input as Partial<PlaybackProgress>;
+  if (typeof p.seconds !== 'number' || !Number.isFinite(p.seconds) || p.seconds < 0) return null;
+  const duration =
+    typeof p.duration === 'number' && Number.isFinite(p.duration) && p.duration > 0
+      ? p.duration
+      : null;
+  return { seconds: Math.round(p.seconds), duration: duration === null ? null : Math.round(duration) };
+}
+
 /** Normaliza un guardado entrante, o null si no es valido. */
 export function sanitize(input: unknown): SavedTitle | null {
   if (!isSavedTitle(input)) return null;
-  const { key, card, at, last } = input as SavedTitle;
+  const { key, card, at, last, progress } = input as SavedTitle;
   const pos: EpisodeRef | null =
     last && Number.isInteger(last.season) && Number.isInteger(last.episode)
       ? { season: last.season, episode: last.episode }
       : null;
-  return { key, card, at, last: pos };
+  return { key, card, at, last: pos, progress: sanitizeProgress(progress) };
 }
 
 export function readLibrary(): { history: SavedTitle[]; favorites: SavedTitle[] } {

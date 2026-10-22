@@ -252,4 +252,21 @@ export interface SavedTitle {
   at: number;
   /** Ultimo capitulo visto, en series. Null en peliculas. */
   last: EpisodeRef | null;
+  /**
+   * Donde se dejo la reproduccion, para reanudar sin tantear.
+   *
+   * `seconds` es el minuto exacto en el que iba y `duration` la duracion total
+   * si la fuente la conocia. Ausente en un guardado viejo o en un titulo que
+   * solo se abrio sin llegar a reproducir: en ese caso se empieza desde cero,
+   * que es lo que el usuario espera y no un fallo.
+   */
+  progress?: PlaybackProgress | null;
+}
+
+/** Posicion de reproduccion guardada en el historial. */
+export interface PlaybackProgress {
+  /** Segundo en el que iba la ultima vez. */
+  seconds: number;
+  /** Duracion total en segundos, si el reproductor la conocia. */
+  duration: number | null;
 }

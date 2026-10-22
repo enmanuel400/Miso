@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { dropHistory, favorite, getLibrary, pushHistory } from './api.js';
-import type { EpisodeRef, SavedTitle, TitleCard } from './types.js';
+import type { EpisodeRef, PlaybackProgress, SavedTitle, TitleCard } from './types.js';
 
 /**
  * Biblioteca local: historial y favoritos.
@@ -66,8 +66,32 @@ function posicion(last: EpisodeRef | null | undefined): EpisodeRef | null {
   return null;
 }
 
-function entrada(card: TitleCard, last?: EpisodeRef | null): SavedTitle {
-  return { key: card.key, card, at: Date.now(), last: posicion(last) };
+function normalizarProgreso(
+  progress: PlaybackProgress | null | undefined,
+): PlaybackProgress | null {
+  if (!progress) return null;
+  if (typeof progress.seconds !== 'number' || !Number.isFinite(progress.seconds) || progress.seconds < 0) {
+    return null;
+  }
+  const duration =
+    typeof progress.duration === 'number' && Number.isFinite(progress.duration) && progress.duration > 0
+      ? Math.round(progress.duration)
+      : null;
+  return { seconds: Math.round(progress.seconds), duration };
+}
+
+function entrada(
+  card: TitleCard,
+  last?: EpisodeRef | null,
+  progress?: PlaybackProgress | null,
+): SavedTitle {
+  return {
+    key: card.key,
+    card,
+    at: Date.now(),
+    last: posicion(last),
+    progress: normalizarProgreso(progress),
+  };
 }
 
 /**
@@ -76,9 +100,19 @@ function entrada(card: TitleCard, last?: EpisodeRef | null): SavedTitle {
  * La clave es la tarjeta agrupada, asi que volver a abrir el mismo titulo lo
  * mueve al frente en vez de duplicarlo; y se guarda la tarjeta entera para poder
  * reabrir el historial aunque la fuente haya caducado.
+ *
+ * `progress` es el minuto exacto en el que iba. Se guarda junto a la temporada y
+ * el capitulo para poder reanudar sin que el usuario tenga que tantear. Es
+ * opcional: una llamada sin el deja la entrada sin posicion, que arranca desde
+ * cero, y no borra una posicion que ya estuviera guardada si el llamante la
+ * omite a proposito para reiniciar.
  */
-export function recordHistory(card: TitleCard, last?: EpisodeRef | null): void {
-  const nueva = entrada(card, last);
+export function recordHistory(
+  card: TitleCard,
+  last?: EpisodeRef | null,
+  progress?: PlaybackProgress | null,
+): void {
+  const nueva = entrada(card, last, progress);
   actualizar({
     ...data,
     history: [nueva, ...data.history.filter((h) => h.key !== nueva.key)].slice(0, 120),

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { sources } from './lib/api.js';
+import { useLibrary } from './lib/library.js';
 import { isDesktop, useServer } from './lib/useServer.js';
-import type { SourceInfo, TitleCard } from './lib/types.js';
+import type { SavedTitle, SourceInfo, TitleCard } from './lib/types.js';
 import { AppHeader, type Seccion } from './ui/AppHeader.js';
 import { BottomBar } from './ui/BottomBar.js';
 import { DetailView } from './ui/DetailView.js';
@@ -28,7 +29,7 @@ export function App() {
   const { status, start, stop, versions } = useServer();
   const [metas, setMetas] = useState<SourceInfo[]>([]);
   const [seccion, setSeccion] = useState<Seccion>('inicio');
-  const [abierto, setAbierto] = useState<TitleCard | null>(null);
+  const library = useLibrary();
 
   const accentBySource = Object.fromEntries(metas.map((m) => [m.id, m.accent]));
 
@@ -47,7 +48,20 @@ export function App() {
     };
   }, [status.state]);
 
-  const open = useCallback((card: TitleCard) => setAbierto(card), []);
+  const [abierto, setAbierto] = useState<{ card: TitleCard; saved: SavedTitle | null } | null>(
+    null,
+  );
+
+  const open = useCallback(
+    (card: TitleCard) => {
+      // Se busca la entrada del historial por la clave de la tarjeta: es la que
+      // trae la temporada, el capitulo y el minuto en el que se dejo. Si el
+      // titulo no se ha visto nunca, no hay nada guardado y se abre desde cero.
+      const saved = library.history.find((h) => h.key === card.key) ?? null;
+      setAbierto({ card, saved });
+    },
+    [library.history],
+  );
   const close = useCallback(() => setAbierto(null), []);
 
   const enArranque =
@@ -92,7 +106,12 @@ export function App() {
           </div>
 
           {abierto && (
-            <DetailView card={abierto} accentBySource={accentBySource} onBack={close} />
+            <DetailView
+              card={abierto.card}
+              saved={abierto.saved}
+              accentBySource={accentBySource}
+              onBack={close}
+            />
           )}
         </>
       )}
