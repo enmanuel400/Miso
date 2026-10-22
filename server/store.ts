@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import path from 'node:path';
 import { PATHS } from './config.js';
 import type {
+  EpisodeProgressMap,
   EpisodeRef,
   PlaybackProgress,
   SavedTitle,
@@ -147,7 +148,7 @@ function sanitizeProgress(input: unknown): PlaybackProgress | null {
 /** Normaliza un guardado entrante, o null si no es valido. */
 export function sanitize(input: unknown): SavedTitle | null {
   if (!isSavedTitle(input)) return null;
-  const { key, card, at, last, progress, watched } = input as SavedTitle;
+  const { key, card, at, last, progress, watched, byEpisode } = input as SavedTitle;
   const pos: EpisodeRef | null =
     last && Number.isInteger(last.season) && Number.isInteger(last.episode)
       ? { season: last.season, episode: last.episode }
@@ -159,7 +160,30 @@ export function sanitize(input: unknown): SavedTitle | null {
     last: pos,
     progress: sanitizeProgress(progress),
     watched: sanitizeWatched(watched),
+    byEpisode: sanitizeByEpisode(byEpisode),
   };
+}
+
+/**
+ * Normaliza el avance por capitulo.
+ *
+ * Cada valor pasa por el mismo saneado que el progreso suelto, asi que una
+ * entrada corrupta se cae sola sin arrastrar al resto del mapa. Se limita el
+ * numero de capitulos por el mismo motivo que en `watched`: el fichero se
+ * reescribe entero y no puede crecer sin freno.
+ */
+function sanitizeByEpisode(input: unknown): EpisodeProgressMap | null {
+  if (!input || typeof input !== 'object') return null;
+  const salida: EpisodeProgressMap = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof k !== 'string' || k.length === 0 || k.length > 32) continue;
+    const p = sanitizeProgress(v);
+    if (!p) continue;
+    salida[k] = p;
+    if (++n >= 5000) break;
+  }
+  return n > 0 ? salida : null;
 }
 
 /**

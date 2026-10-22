@@ -151,8 +151,16 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
    * montar y desmonte cuando ya no aplica.
    */
   const [resumeAt, setResumeAt] = useState<number | null>(() => {
-    const p = saved?.progress;
-    return p && p.seconds > 0 ? p.seconds : null;
+    const p = saved?.last;
+    // Se prefiere el avance del capitulo concreto sobre el global: si se vuelve
+    // a un capitulo viejo, lo correcto es retomar donde se dejo en EL, no donde
+    // quedo la serie la ultima vez.
+    if (p) {
+      const porCap = saved?.byEpisode?.[watchedKey(p)];
+      if (porCap && porCap.seconds > 0) return porCap.seconds;
+    }
+    const g = saved?.progress;
+    return g && g.seconds > 0 ? g.seconds : null;
   });
 
   /**
@@ -165,6 +173,24 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
    */
   const resumeAtRef = useRef(resumeAt);
   resumeAtRef.current = resumeAt;
+
+  /**
+   * Contador que fuerza a remontar el reproductor.
+   *
+   * Se usa para "empezar de cero": cambiar `resumeAt` no basta, porque el player
+   * solo lo lee al montar. Incrementar esto cambia su `key` y lo monta de nuevo,
+   * ya sin minuto de reanudacion.
+   */
+  const [playerNonce, setPlayerNonce] = useState(0);
+
+  /**
+   * Aviso de "continuar donde ibas".
+   *
+   * Se muestra una vez, mientras el titulo se reabre con un minuto guardado. El
+   * video ya arranca reanudado, asi que el aviso no pide permiso: informa y da
+   * salida a quien prefiera empezar de cero, que es la minoria pero existe.
+   */
+  const [avisoReanudar, setAvisoReanudar] = useState(false);
 
   /**
    * Servidores que ya se fallaron, en este montaje.
@@ -317,6 +343,23 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
   useEffect(() => {
     setAutoNext(null);
   }, [posKey]);
+
+  /*
+   * Aviso de reanudacion. Se enciende cuando hay imagen y un minuto pendiente, y
+   * se apaga solo a los pocos segundos: es un aviso, no un dialogo que bloquee.
+   *
+   * Se ata a `resumeAt` (el minuto guardado, que se limpia al cambiar de
+   * capitulo o de fuente) y no a `playback.resumeAt`: ese ultimo tambien lo
+   * escribe la reconexion para retomar tras un corte, y ahi decir "reanudado"
+   * seria hablar de otra cosa.
+   */
+  useEffect(() => {
+    if (playback.phase !== 'listo') return;
+    if (!resumeAt || resumeAt <= 0) return;
+    setAvisoReanudar(true);
+    const t = setTimeout(() => setAvisoReanudar(false), 6000);
+    return () => clearTimeout(t);
+  }, [playback.phase, resumeAt]);
 
   // Carga el detalle y deja que el servidor elija el servidor que funciona.
   // Una sola pasada para la fuente y el capitulo: los dos entran en la misma
@@ -751,6 +794,7 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
 
           {playback.phase === 'listo' && (
             <PlayerBridge
+              key={playerNonce}
               state={playback}
               title={title}
               poster={poster}
@@ -760,6 +804,33 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
               onEnded={alTerminar}
             />
           )}
+
+          {/*
+           * Aviso de que el video ha reanudado donde se dejo. El video ya viene
+           * arrancado en ese minuto: esto lo dice y ofrece empezar de cero, que
+           * es lo unico que no puede hacer el solo.
+           */}
+          {avisoReanudar && playback.phase === 'listo' && playback.resumeAt && autoNext === null ? (
+            <div className="next-up" role="status">
+              <p className="next-up-text">
+                Reanudado en {formatarTiempo(playback.resumeAt)}
+              </p>
+              <div className="next-up-actions">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => {
+                    setAvisoReanudar(false);
+                    setResumeAt(null);
+                    setPlayback({ ...playback, resumeAt: 0 });
+                    setPlayerNonce((n) => n + 1);
+                  }}
+                >
+                  Empezar de cero
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {/*
            * Aviso de fin de capitulo. Se ofrece el salto, no se impone: un
@@ -1020,6 +1091,17 @@ function formatarFecha(iso: string): string {
     'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
   ];
   return `${Number(m[3])} de ${meses[Number(m[2]) - 1]} de ${m[1]}`;
+}
+
+/** "1 h 23 min", "23 min" o "45 s" segun el tamano. Para el aviso de reanudar. */
+function formatarTiempo(segundos: number): string {
+  const s = Math.max(0, Math.round(segundos));
+  if (s < 60) return `${s} s`;
+  const min = Math.floor(s / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const resto = min % 60;
+  return resto ? `${h} h ${resto} min` : `${h} h`;
 }
 
 /**

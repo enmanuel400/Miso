@@ -273,7 +273,23 @@ export interface SavedTitle {
    * ambas haria que terminar un capitulo por inercia lo marcara como visto.
    */
   watched?: WatchedMap | null;
+  /**
+   * Progreso de CADA capitulo, no solo del ultimo.
+   *
+   * `progress` guarda donde se quedo la serie para reanudarla de un tiron; esto
+   * guarda el avance de cada capitulo por separado, para que volver a un
+   * capitulo viejo retome donde se dejo en el y no en el ultimo que se vio. La
+   * clave es la misma que la de `watched` ("s:e" o "movie").
+   *
+   * Vive dentro de la entrada del titulo y no como entradas sueltas del
+   * historial porque el historial se agrupa por tarjeta: una fila por titulo
+   * ("seguir viendo esta serie") y, dentro, el detalle de cada capitulo.
+   */
+  byEpisode?: EpisodeProgressMap | null;
 }
+
+/** Avance por capitulo, con clave `"temporada:capitulo"` o `"movie"`. */
+export type EpisodeProgressMap = Record<string, PlaybackProgress>;
 
 /** Claves de capitulos marcados como vistos: `"temporada:capitulo"` o `"movie"`. */
 export type WatchedMap = Record<string, boolean>;

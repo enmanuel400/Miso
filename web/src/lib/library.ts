@@ -67,6 +67,22 @@ function posicion(last: EpisodeRef | null | undefined): EpisodeRef | null {
   return null;
 }
 
+/**
+ * Entrada nueva para favoritos.
+ *
+ * Los favoritos no arrastran progreso ni vistos: son una marca, no un registro
+ * de visionado. Se crea con la posicion que traiga la tarjeta, si trae alguna.
+ */
+function entrada(card: TitleCard): SavedTitle {
+  return {
+    key: card.key,
+    card,
+    at: Date.now(),
+    last: posicion(card.entries[0]?.episode ?? null),
+    progress: null,
+  };
+}
+
 function normalizarProgreso(
   progress: PlaybackProgress | null | undefined,
 ): PlaybackProgress | null {
@@ -81,20 +97,6 @@ function normalizarProgreso(
   return { seconds: Math.round(progress.seconds), duration };
 }
 
-function entrada(
-  card: TitleCard,
-  last?: EpisodeRef | null,
-  progress?: PlaybackProgress | null,
-): SavedTitle {
-  return {
-    key: card.key,
-    card,
-    at: Date.now(),
-    last: posicion(last),
-    progress: normalizarProgreso(progress),
-  };
-}
-
 /**
  * Anota un titulo como visto.
  *
@@ -105,15 +107,38 @@ function entrada(
  * `progress` es el minuto exacto en el que iba. Se guarda junto a la temporada y
  * el capitulo para poder reanudar sin que el usuario tenga que tantear. Es
  * opcional: una llamada sin el deja la entrada sin posicion, que arranca desde
- * cero, y no borra una posicion que ya estuviera guardada si el llamante la
- * omite a proposito para reiniciar.
+ * cero.
+ *
+ * Se FUSIONA con la entrada anterior en lugar de reemplazarla. Sin eso, abrir un
+ * titulo borraria sus marcas de visto y el avance que tuviera guardado de otros
+ * capitulos, que es justo lo contrario de lo que promete un historial.
  */
 export function recordHistory(
   card: TitleCard,
   last?: EpisodeRef | null,
   progress?: PlaybackProgress | null,
 ): void {
-  const nueva = entrada(card, last, progress);
+  const antes = data.history.find((h) => h.key === card.key);
+  const pos = posicion(last);
+  const prog = normalizarProgreso(progress);
+
+  // El avance por capitulo se actualiza solo cuando hay posicion y avance: una
+  // apertura sin reproduccion no debe escribir un cero sobre lo que ya habia.
+  let byEpisode = antes?.byEpisode ?? null;
+  if (pos && prog) {
+    byEpisode = { ...(byEpisode ?? {}), [watchedKey(pos)]: prog };
+  }
+
+  const nueva: SavedTitle = {
+    key: card.key,
+    card,
+    at: Date.now(),
+    last: pos,
+    progress: prog,
+    watched: antes?.watched ?? null,
+    byEpisode,
+  };
+
   actualizar({
     ...data,
     history: [nueva, ...data.history.filter((h) => h.key !== nueva.key)].slice(0, 120),
@@ -154,6 +179,7 @@ export function toggleWatched(card: TitleCard, pos: EpisodeRef | null): void {
     last: actual?.last ?? posicion(pos),
     progress: actual?.progress ?? null,
     watched: mapa,
+    byEpisode: actual?.byEpisode ?? null,
   };
 
   actualizar({

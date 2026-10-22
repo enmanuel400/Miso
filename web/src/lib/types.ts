@@ -8,6 +8,7 @@
 import type {
   AggregatedSearch,
   EpisodeInfo,
+  EpisodeProgressMap,
   EpisodeRef,
   Genre,
   MediaKind,
@@ -36,6 +37,7 @@ export { watchedKey } from '../../../server/sources/types.js';
 export type {
   AggregatedSearch,
   EpisodeInfo,
+  EpisodeProgressMap,
   EpisodeRef,
   Genre,
   MediaKind,
