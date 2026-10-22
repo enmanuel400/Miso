@@ -261,6 +261,26 @@ export interface SavedTitle {
    * que es lo que el usuario espera y no un fallo.
    */
   progress?: PlaybackProgress | null;
+  /**
+   * Capitulos (o la pelicula) marcados como vistos a mano.
+   *
+   * Es un conjunto de claves, no un booleano, porque una serie tiene muchos
+   * capitulos y el usuario marca uno concreto. La clave es `s:e` en series y
+   * `movie` en peliculas, lo que deja el mismo campo para los dos casos.
+   *
+   * Se separa de `progress` a proposito: "visto" es una decision del usuario
+   * ("este ya lo vi"), mientras que `progress` es una medida automatica. Mezclar
+   * ambas haria que terminar un capitulo por inercia lo marcara como visto.
+   */
+  watched?: WatchedMap | null;
+}
+
+/** Claves de capitulos marcados como vistos: `"temporada:capitulo"` o `"movie"`. */
+export type WatchedMap = Record<string, boolean>;
+
+/** Clave de "visto" para un capitulo o para una pelicula. */
+export function watchedKey(pos: EpisodeRef | null): string {
+  return pos ? `${pos.season}:${pos.episode}` : 'movie';
 }
 
 /** Posicion de reproduccion guardada en el historial. */

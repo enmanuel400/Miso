@@ -628,6 +628,30 @@ button {
   opacity: 1;
 }
 
+/*
+ * Barra de avance de un titulo empezado.
+ *
+ * Va pegada al borde inferior del cartel, con la misma altura y forma que la de
+ * la rejilla de skeletons para que la tarjeta no cambie de aspecto entre estados.
+ * El dorado es el acento que ya usa la aplicacion para "esto es tuyo".
+ */
+.card-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.card-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 240ms ease-out;
+}
+
 .card-meta {
   padding: 10px 2px 0;
 }
@@ -964,6 +988,74 @@ button {
   gap: 8px;
   max-width: 480px;
   text-align: center;
+}
+
+/*
+ * Aviso de "siguiente capitulo".
+ *
+ * Se ancla a la esquina inferior derecha del escenario, que es donde la vista no
+ * tapa al reproductor pero sigue siendo un blanco facil. Fondo translucido con
+ * desenfoque para que se lea sobre cualquier fotograma sin una caja opaca que
+ * parezca un dialogo modal.
+ */
+.next-up {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(12, 12, 15, 0.86);
+  backdrop-filter: blur(10px);
+  animation: next-up-in 220ms ease-out;
+}
+
+.next-up-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.next-up-sub {
+  color: var(--dim);
+}
+
+.next-up-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-up-go {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #14100a;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.next-up-go:hover {
+  filter: brightness(1.08);
+}
+
+@keyframes next-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .stage-spinner {
@@ -1755,6 +1847,31 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Barra de avance en la fila del historial.
+ *
+ * Fina y contenida al ancho del texto, no de la fila: asi acompaña la linea que
+ * dice cuanto queda en vez de cruzar toda la pantalla, que en una lista se lee
+ * como un separador y no como un dato.
+ */
+.hist-bar {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.hist-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
 .hist-when {
   flex: none;
   margin-left: auto;
@@ -1824,6 +1941,48 @@ button {
 
 .fav-btn[data-on] svg {
   color: var(--accent);
+}
+
+/*
+ * Marca de visto dentro del boton.
+ *
+ * Es un caracter y no un icono SVG porque su pareja ("+" / "✓") es lo unico que
+ * cambia y no merece un componente. La anchura fija evita que el boton de un
+ * salto al pasar de uno a otro.
+ */
+.watch-tick {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--dim);
+}
+
+.fav-btn[data-on] .watch-tick {
+  color: var(--accent);
+}
+
+/*
+ * Capitulo ya visto en el selector.
+ *
+ * Se atenua y se tacha con un tilde. No se oculta: el usuario tiene que poder
+ * volver a un capitulo viejo, y esconderlo obligaria a adivinar que existe.
+ */
+.ep-ep[data-watched] {
+  color: var(--dimmer);
+}
+
+.ep-ep[data-watched]:not([data-active]) {
+  opacity: 0.62;
+}
+
+.ep-seen {
+  margin-left: 3px;
+  font-size: 9px;
+  color: var(--accent);
+  vertical-align: super;
 }
 
 /* ======================================================================== */

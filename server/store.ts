@@ -1,7 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { PATHS } from './config.js';
-import type { EpisodeRef, PlaybackProgress, SavedTitle, TitleCard } from './sources/types.js';
+import type {
+  EpisodeRef,
+  PlaybackProgress,
+  SavedTitle,
+  TitleCard,
+  WatchedMap,
+} from './sources/types.js';
 
 /**
  * Biblioteca local: historial y favoritos.
@@ -141,12 +147,35 @@ function sanitizeProgress(input: unknown): PlaybackProgress | null {
 /** Normaliza un guardado entrante, o null si no es valido. */
 export function sanitize(input: unknown): SavedTitle | null {
   if (!isSavedTitle(input)) return null;
-  const { key, card, at, last, progress } = input as SavedTitle;
+  const { key, card, at, last, progress, watched } = input as SavedTitle;
   const pos: EpisodeRef | null =
     last && Number.isInteger(last.season) && Number.isInteger(last.episode)
       ? { season: last.season, episode: last.episode }
       : null;
-  return { key, card, at, last: pos, progress: sanitizeProgress(progress) };
+  return {
+    key,
+    card,
+    at,
+    last: pos,
+    progress: sanitizeProgress(progress),
+    watched: sanitizeWatched(watched),
+  };
+}
+
+/**
+ * Normaliza el mapa de vistos.
+ *
+ * Solo se aceptan booleanos verdaderos: una clave con `false` no aporta nada y
+ * solo engorda el JSON, que se reescribe entero en cada guardado. Se limita el
+ * numero de claves para que un cliente comprometido no infle el fichero.
+ */
+function sanitizeWatched(input: unknown): WatchedMap | null {
+  if (!input || typeof input !== 'object') return null;
+  const entradas = Object.entries(input as Record<string, unknown>)
+    .filter(([k, v]) => v === true && typeof k === 'string' && k.length > 0 && k.length <= 32)
+    .slice(0, 5000) as [string, boolean][];
+  if (entradas.length === 0) return null;
+  return Object.fromEntries(entradas);
 }
 
 export function readLibrary(): { history: SavedTitle[]; favorites: SavedTitle[] } {

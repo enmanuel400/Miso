@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { dropHistory, favorite, getLibrary, pushHistory } from './api.js';
 import type { EpisodeRef, PlaybackProgress, SavedTitle, TitleCard } from './types.js';
+import { watchedKey } from './types.js';
 
 /**
  * Biblioteca local: historial y favoritos.
@@ -124,6 +125,48 @@ export function recordHistory(
 export function forgetHistory(key: string): void {
   actualizar({ ...data, history: data.history.filter((h) => h.key !== key) });
   void dropHistory(key).catch(() => undefined);
+}
+
+/**
+ * Marca o desmarca un capitulo (o una pelicula) como visto.
+ *
+ * Es una anotacion manual y por eso vive en el mismo sitio que el resto del
+ * historial: sobrevive al cierre y se ve desde cualquier pantalla. Si el titulo
+ * aun no estaba en el historial, se crea la entrada, porque marcar como visto es
+ * ya una forma de decir "esto lo he tocado".
+ */
+export function toggleWatched(card: TitleCard, pos: EpisodeRef | null): void {
+  const clave = watchedKey(pos);
+  const actual = data.history.find((h) => h.key === card.key);
+  const watched = { ...(actual?.watched ?? {}) };
+
+  if (watched[clave]) delete watched[clave];
+  else watched[clave] = true;
+
+  // Sin marcas, se deja el campo en null en vez de un objeto vacio: el fichero
+  // se reescribe entero y un `{}` por cada titulo es ruido puro.
+  const mapa = Object.keys(watched).length > 0 ? watched : null;
+
+  const nueva: SavedTitle = {
+    key: card.key,
+    card: actual?.card ?? card,
+    at: actual?.at ?? Date.now(),
+    last: actual?.last ?? posicion(pos),
+    progress: actual?.progress ?? null,
+    watched: mapa,
+  };
+
+  actualizar({
+    ...data,
+    history: [nueva, ...data.history.filter((h) => h.key !== card.key)],
+  });
+  void pushHistory(nueva).catch(() => undefined);
+}
+
+/** Si un capitulo (o la pelicula) esta marcado como visto. */
+export function esVisto(datos: LibraryData, key: string, pos: EpisodeRef | null): boolean {
+  const entrada = datos.history.find((h) => h.key === key);
+  return Boolean(entrada?.watched?.[watchedKey(pos)]);
 }
 
 /** Vacia el historial entero. */

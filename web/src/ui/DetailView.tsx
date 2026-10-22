@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, report, resolve, title as fetchTitle } from '../lib/api.js';
-import { recordHistory, toggleFavorite, useLibrary } from '../lib/library.js';
+import { recordHistory, toggleFavorite, toggleWatched, useLibrary } from '../lib/library.js';
+import { watchedKey } from '../lib/types.js';
 import { IconStar } from './Icons.js';
 import type {
   Attempt,
@@ -15,6 +16,7 @@ import type {
   TitleCard,
   TitleDetail,
   TitleResponse,
+  WatchedMap,
 } from '../lib/types.js';
 import { VideoPlayer } from './Player.js';
 
@@ -70,6 +72,15 @@ const KIND_LABEL: Record<string, string> = {
 const RECONEXION_MIN_SEC = 30;
 const RECONEXION_MAX = 3;
 const RECONEXION_SALUDABLE_SEC = 300;
+
+/**
+ * Segundos que se ofrece esperar antes de saltar al capitulo siguiente.
+ *
+ * Diez segundos dan tiempo a cancelar sin que la espera se sienta una pausa
+ * impuesta. Es el mismo orden que usan los reproductores de las plataformas que
+ * la gente ya conoce, y por eso no hay que explicarlo.
+ */
+const AUTO_NEXT_SEC = 10;
 
 /**
  * Una entrada por fuente, y solo una.
@@ -206,8 +217,18 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
 
   const posKey = pos ? `${pos.season}:${pos.episode}` : '';
 
-  const { favorites } = useLibrary();
+  const { favorites, history } = useLibrary();
   const favorito = favorites.some((f) => f.key === card.key);
+
+  /**
+   * Marcas de "visto" de este titulo.
+   *
+   * Se leen del historial y no se guardan en estado local: marcar un capitulo
+   * escribe en el almacen, que emite y repinta. Duplicarlo aqui seria dos
+   * fuentes de verdad para el mismo dato.
+   */
+  const watchedDeEste = history.find((h) => h.key === card.key)?.watched ?? null;
+  const esteVisto = Boolean(watchedDeEste?.[watchedKey(pos)]);
 
   /**
    * Ultimo progreso conocido, en ref.
@@ -244,6 +265,58 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
     },
     [card, pos],
   );
+
+  /**
+   * Capitulo que sigue, si lo hay.
+   *
+   * Se calcula a partir del indice ya cargado (la lista de la temporada que se
+   * esta viendo y, en el borde, la temporada contigua). En una pelicula o en una
+   * serie sin lista no hay siguiente, y el aviso de fin de video no aparece.
+   */
+  const siguiente = useMemo<EpisodeRef | null>(() => {
+    const indice = detail?.episodes;
+    if (!indice || indice.seasons.length === 0) return null;
+    return vecinos(indice.episodes, indice.episode, indice.seasons).siguiente;
+  }, [detail]);
+
+  /**
+   * Cuenta atras para el salto automatico al siguiente capitulo.
+   *
+   * Se guarda en segundos restantes y no en un temporizador opaco para poder
+   * pintarla y poder cancelarla. En null no hay salto pendiente.
+   */
+  const [autoNext, setAutoNext] = useState<number | null>(null);
+
+  const cancelarAutoNext = useCallback(() => setAutoNext(null), []);
+
+  /**
+   * El video termino. Si hay capitulo siguiente, se ofrece saltar en unos
+   * segundos; si no, no pasa nada: la pantalla se queda como estaba, que es lo
+   * correcto para una pelicula o para el ultimo capitulo.
+   */
+  const alTerminar = useCallback(() => {
+    // Dejarlo en cero evita que al reabrir la serie se reanude en el final.
+    progresoRef.current = { seconds: 0, duration: progresoRef.current?.duration ?? null };
+    recordHistory(card, pos, progresoRef.current);
+    if (siguiente) setAutoNext(AUTO_NEXT_SEC);
+  }, [card, pos, siguiente]);
+
+  // Baja la cuenta y salta al agotarse. Se reinicia si cambia el siguiente.
+  useEffect(() => {
+    if (autoNext === null) return;
+    if (autoNext <= 0) {
+      setAutoNext(null);
+      if (siguiente) pickEpisode(siguiente);
+      return;
+    }
+    const t = setTimeout(() => setAutoNext((v) => (v === null ? null : v - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [autoNext, siguiente, pickEpisode]);
+
+  // Cambiar de capitulo a mano cancela cualquier salto pendiente.
+  useEffect(() => {
+    setAutoNext(null);
+  }, [posKey]);
 
   // Carga el detalle y deja que el servidor elija el servidor que funciona.
   // Una sola pasada para la fuente y el capitulo: los dos entran en la misma
@@ -577,6 +650,31 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
             {favorito ? 'En favoritos' : 'Añadir a favoritos'}
           </button>
 
+          {/*
+           * Marcar como visto. Es un boton y no un gesto oculto porque es una
+           * decision del usuario: "este capitulo ya lo vi y no quiero que me lo
+           * ofrezca otra vez". Convive con la barra de progreso sin pisarla: el
+           * progreso mide, esto decide.
+           */}
+          <button
+            type="button"
+            className="fav-btn"
+            data-on={esteVisto || undefined}
+            aria-pressed={esteVisto}
+            onClick={() => toggleWatched(card, pos)}
+          >
+            <span className="watch-tick" aria-hidden="true">
+              {esteVisto ? '✓' : '+'}
+            </span>
+            {esteVisto
+              ? pos
+                ? `T${pos.season}E${pos.episode} visto`
+                : 'Visto'
+              : pos
+                ? 'Marcar capítulo visto'
+                : 'Marcar como visto'}
+          </button>
+
           {fuentes.length > 1 && (
             <div className="switcher">
               <h2 className="switcher-label">Fuente</h2>
@@ -601,7 +699,12 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
           )}
 
           {indice && indice.seasons.length > 0 && (
-            <EpisodePicker indice={indice} pending={pending} onPick={pickEpisode} />
+            <EpisodePicker
+              indice={indice}
+              pending={pending}
+              vistos={watchedDeEste ?? null}
+              onPick={pickEpisode}
+            />
           )}
 
           {detail && detail.servers.length > 0 && (
@@ -654,7 +757,36 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
               reconnecting={recuperando}
               onFail={manejarFalloReproductor}
               onProgress={guardarProgreso}
+              onEnded={alTerminar}
             />
+          )}
+
+          {/*
+           * Aviso de fin de capitulo. Se ofrece el salto, no se impone: un
+           * boton de cancelar al lado deja claro que el usuario manda.
+           */}
+          {autoNext !== null && siguiente && (
+            <div className="next-up" role="status">
+              <p className="next-up-text">
+                Siguiente capítulo en {autoNext} s
+                <span className="next-up-sub"> · T{siguiente.season}E{siguiente.episode}</span>
+              </p>
+              <div className="next-up-actions">
+                <button
+                  type="button"
+                  className="next-up-go"
+                  onClick={() => {
+                    setAutoNext(null);
+                    pickEpisode(siguiente);
+                  }}
+                >
+                  Ver ahora
+                </button>
+                <button type="button" className="ghost-btn" onClick={cancelarAutoNext}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
           )}
 
           {playback.phase === 'fallo' && (
@@ -695,10 +827,13 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
 function EpisodePicker({
   indice,
   pending,
+  vistos,
   onPick,
 }: {
   indice: SeriesIndex;
   pending: boolean;
+  /** Claves `"s:e"` ya marcadas como vistas, para atenuarlas. */
+  vistos: WatchedMap | null;
   onPick(pos: EpisodeRef): void;
 }) {
   const { seasons, episodes, episode } = indice;
@@ -767,6 +902,7 @@ function EpisodePicker({
               ep={e}
               active={e.episode === episode?.episode}
               pending={pending}
+              visto={Boolean(vistos?.[`${e.season}:${e.episode}`])}
               onPick={onPick}
             />
           ))
@@ -798,11 +934,13 @@ function EpisodeButton({
   ep,
   active,
   pending,
+  visto,
   onPick,
 }: {
   ep: EpisodeInfo;
   active: boolean;
   pending: boolean;
+  visto: boolean;
   onPick(pos: EpisodeRef): void;
 }) {
   return (
@@ -810,11 +948,13 @@ function EpisodeButton({
       type="button"
       className="switcher-option ep-ep"
       data-active={active || undefined}
+      data-watched={visto || undefined}
       disabled={pending || !ep.available}
       title={ep.title ?? undefined}
       onClick={() => onPick({ season: ep.season, episode: ep.episode })}
     >
       {ep.episode}
+      {visto && <span className="ep-seen" aria-hidden="true">✓</span>}
     </button>
   );
 }
@@ -899,6 +1039,7 @@ function PlayerBridge({
   reconnecting,
   onFail,
   onProgress,
+  onEnded,
 }: {
   state: Extract<PlaybackState, { phase: 'listo' }>;
   title: string;
@@ -906,6 +1047,7 @@ function PlayerBridge({
   reconnecting: boolean;
   onFail(motivo: string, trace: string[], enSegundo: number): void;
   onProgress(seconds: number, duration: number | null): void;
+  onEnded(): void;
 }) {
   return (
     <VideoPlayer
@@ -915,6 +1057,7 @@ function PlayerBridge({
       reconnecting={reconnecting}
       onFail={onFail}
       onProgress={onProgress}
+      onEnded={onEnded}
     />
   );
 }

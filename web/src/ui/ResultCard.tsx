@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toggleFavorite, useLibrary } from '../lib/library.js';
+import { fraccionVista } from '../lib/progress.js';
 import type { TitleCard } from '../lib/types.js';
 import { IconStar } from './Icons.js';
 
@@ -43,8 +44,19 @@ const STAGGER_CAP = 12;
 
 export function ResultCard({ card, accentBySource, onOpen, index }: Props) {
   const [posterFailed, setPosterFailed] = useState(false);
-  const { favorites } = useLibrary();
+  const { favorites, history } = useLibrary();
   const favorito = favorites.some((f) => f.key === card.key);
+
+  /**
+   * Avance guardado, si este titulo esta a medias.
+   *
+   * El progreso vive en el historial, no en la tarjeta, porque la tarjeta es lo
+   * que devuelve una busqueda y no sabe nada de lo que el usuario vio. Se busca
+   * por la clave agrupada, que es la misma con la que se guardo.
+   */
+  const guardado = history.find((h) => h.key === card.key)?.progress ?? null;
+  /** Fraccion 0..1, solo si se conoce la duracion: sin ella no hay barra honesta. */
+  const avance = fraccionVista(guardado);
 
   /*
    * Una insignia por FUENTE, no por entrada.
@@ -102,6 +114,18 @@ export function ResultCard({ card, accentBySource, onOpen, index }: Props) {
               <path d="M8 5.5v13l11-6.5z" fill="currentColor" />
             </svg>
           </span>
+
+          {/*
+           * Barra de avance: solo aparece si hay duracion conocida, porque una
+           * barra sin denominador seria un adorno que miente sobre cuanto queda.
+           * Va dentro del arte para que se lea sobre el cartel sin robar sitio al
+           * texto de debajo.
+           */}
+          {avance !== null && (
+            <span className="card-progress" aria-hidden="true">
+              <span className="card-progress-fill" style={{ width: `${Math.round(avance * 100)}%` }} />
+            </span>
+          )}
         </div>
 
         <div className="card-meta">

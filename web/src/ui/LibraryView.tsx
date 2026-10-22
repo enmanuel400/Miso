@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { clearHistory, forgetHistory, useLibrary } from '../lib/library.js';
+import { fraccionVista, restante } from '../lib/progress.js';
 import type { SavedTitle, TitleCard } from '../lib/types.js';
 import { IconClose } from './Icons.js';
 import { ResultCard } from './ResultCard.js';
@@ -136,7 +137,11 @@ export function LibraryView({ tipo, accentBySource, onOpen }: Props) {
 
         {tipo === 'historial' && history.length > 0 && (
           <ul className="hist">
-            {history.map((s: SavedTitle) => (
+            {history.map((s: SavedTitle) => {
+              const queda = restante(s.progress);
+              const frac = fraccionVista(s.progress);
+              const pct = frac === null ? null : Math.round(frac * 100);
+              return (
               <li className="hist-item" key={s.key}>
                 <button type="button" className="hist-open" onClick={() => onOpen(s.card)}>
                   <span className="hist-art">
@@ -148,7 +153,13 @@ export function LibraryView({ tipo, accentBySource, onOpen }: Props) {
                       {tipoLabel(s.card)}
                       {s.card.year ? ` · ${s.card.year}` : ''}
                       {s.last ? ` · T${s.last.season}E${s.last.episode}` : ''}
+                      {queda ? ` · ${queda}` : ''}
                     </span>
+                    {pct !== null && (
+                      <span className="hist-bar" aria-hidden="true">
+                        <span className="hist-bar-fill" style={{ width: `${pct}%` }} />
+                      </span>
+                    )}
                   </span>
                   <span className="hist-when">{hace(s.at)}</span>
                 </button>
@@ -162,7 +173,8 @@ export function LibraryView({ tipo, accentBySource, onOpen }: Props) {
                   <IconClose size={14} />
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

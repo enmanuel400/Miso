@@ -37,6 +37,11 @@ interface Props {
    * sitio y evita castigar el JSON.
    */
   onProgress?(seconds: number, duration: number | null): void;
+  /**
+   * El video llego al final. El padre decide que hacer: pasar al siguiente
+   * capitulo si la fuente los tiene, o nada si es una pelicula.
+   */
+  onEnded?(): void;
 }
 
 /** URL de reproduccion, ya pasada por el proxy cuando hace falta. */
@@ -49,7 +54,7 @@ function playbackUrl(stream: PlayableStream): string {
 
 const SKIP_SEC = 10;
 
-export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onProgress }: Props) {
+export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onProgress, onEnded }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +64,10 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
    */
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
+
+  /** Igual que el anterior: el aviso de fin de video vive en una ref. */
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
 
   /**
    * Ultimo segundo avisado al padre, para no repetir escrituras.
@@ -284,6 +293,12 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
       // el usuario deja de mirar y a menudo cuando cierra o cambia de pantalla.
       avisarProgreso(true);
     };
+    const onEndedEvt = () => {
+      // El video llego al final: se fija la posicion y se avisa al padre, que
+      // decide si hay un capitulo siguiente que poner.
+      avisarProgreso(true);
+      onEndedRef.current?.();
+    };
     const onWaiting = () => setWaiting(true);
     const onPlaying = () => setWaiting(false);
     const onVolume = () => {
@@ -323,6 +338,7 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
     video.addEventListener('loadedmetadata', onMeta);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('ended', onEndedEvt);
     video.addEventListener('waiting', onWaiting);
     video.addEventListener('playing', onPlaying);
     video.addEventListener('volumechange', onVolume);
@@ -335,6 +351,7 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
       video.removeEventListener('loadedmetadata', onMeta);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('ended', onEndedEvt);
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('playing', onPlaying);
       video.removeEventListener('volumechange', onVolume);

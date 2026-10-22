@@ -24,7 +24,10 @@ import type {
   SourceStatus,
   TitleCard,
   TitleDetail,
+  WatchedMap,
 } from '../../../server/sources/types.js';
+
+export { watchedKey } from '../../../server/sources/types.js';
 
 /**
  * Se reexportan tal cual, no se redeclaran: si el contrato del servidor cambia,
@@ -49,6 +52,7 @@ export type {
   SourceStatus,
   TitleCard,
   TitleDetail,
+  WatchedMap,
 };
 
 /**

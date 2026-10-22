@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, home as fetchHome, search } from '../lib/api.js';
 import { useLibrary } from '../lib/library.js';
+import { restante } from '../lib/progress.js';
 import { failedSources, mergeResults } from '../lib/merge.js';
 import type { AggregatedSearch, SourceMeta, TitleCard } from '../lib/types.js';
 import { ResultCard } from './ResultCard.js';
@@ -170,10 +171,20 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
   const inicioCards = inicio.data ? mergeResults(inicio.data.results) : [];
   const inicioFailed = inicio.data ? failedSources(inicio.data) : [];
 
-  // "Continuar viendo" no es lo mismo que el historial: aqui solo caben los
-  // ultimos que se abrieron, para que el inicio siga siendo de un vistazo. La
-  // lista completa esta en su seccion.
-  const continuar = history.slice(0, 6);
+  /**
+   * "Continuar viendo" no es lo mismo que el historial: aqui solo caben los
+   * ultimos que se abrieron, para que el inicio siga siendo de un vistazo. La
+   * lista completa esta en su seccion.
+   *
+   * Se separan los que estan a medias de los que solo se abrieron o ya se
+   * terminaron: "continuar" promete retomar algo empezado, y meter ahi una serie
+   * recien terminada (progreso en cero) seria una promesa falsa. Un titulo sin
+   * `progress` tampoco entra: no hay nada que continuar todavia.
+   */
+  const continuar = useMemo(() => {
+    const aMedias = history.filter((s) => s.progress && s.progress.seconds > 0);
+    return (aMedias.length > 0 ? aMedias : history).slice(0, 6);
+  }, [history]);
 
   return (
     <div className="search">
@@ -251,15 +262,20 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
               <>
                 <h2 className="home-title">Continuar viendo</h2>
                 <ul className="grid">
-                  {continuar.map((s, i) => (
-                    <ResultCard
-                      key={`h-${s.key}`}
-                      card={s.last ? { ...s.card, note: `T${s.last.season}E${s.last.episode}` } : s.card}
-                      accentBySource={accentBySource}
-                      onOpen={onOpen}
-                      index={i}
-                    />
-                  ))}
+                  {continuar.map((s, i) => {
+                    const cap = s.last ? `T${s.last.season}E${s.last.episode}` : null;
+                    const queda = restante(s.progress);
+                    const note = [cap, queda].filter(Boolean).join(' · ');
+                    return (
+                      <ResultCard
+                        key={`h-${s.key}`}
+                        card={note ? { ...s.card, note } : s.card}
+                        accentBySource={accentBySource}
+                        onOpen={onOpen}
+                        index={i}
+                      />
+                    );
+                  })}
                 </ul>
               </>
             )}
