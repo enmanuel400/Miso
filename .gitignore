@@ -20,4 +20,4 @@ Thumbs.db
 # Paquete movil (Termux): se conserva en disco, pero fuera del control de
 # versiones. No afecta a la app de escritorio.
 scripts/termux/
-scripts/build-termux.mjs
+scripts/build-termux.mjscapturas manuales/
