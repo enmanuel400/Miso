@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ApiError, report, resolve, title as fetchTitle } from '../lib/api.js';
 import { recordHistory, toggleFavorite, toggleWatched, useLibrary } from '../lib/library.js';
+import { useDispositivo } from '../lib/useDispositivo.js';
 import { watchedKey } from '../lib/types.js';
 import { IconStar } from './Icons.js';
 import type {
@@ -715,37 +716,147 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
   const nextId = detail?.servers.find((s) => !probados.includes(s.id))?.id;
 
   const indice = detail?.episodes ?? null;
+  const dispositivo = useDispositivo();
+  const esMovil = dispositivo === 'mobile';
+  const ancho = dispositivo === 'desktop' ? 1240 : dispositivo === 'tablet' ? 960 : 480;
+  const separacion = dispositivo === 'desktop' ? 24 : dispositivo === 'tablet' ? 20 : 16;
 
-  return (
-    <div className="detail">
-      <div className="detail-bar">
-        <button type="button" className="detail-back" onClick={onBack}>
-          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M19 12H5M11 6l-6 6 6 6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Resultados
-        </button>
+  const posterLateral = (
+    <div className="detail-poster" aria-hidden="true">
+      {poster ? (
+        <img src={`/api/img?u=${encodeURIComponent(poster)}`} alt="" decoding="async" />
+      ) : (
+        <span className="detail-poster-letra">{title.charAt(0).toUpperCase()}</span>
+      )}
+    </div>
+  );
+
+  const capitulos =
+    indice && indice.seasons.length > 0 ? (
+      <EpisodePicker
+        indice={indice}
+        pending={pending}
+        vistos={watchedDeEste ?? null}
+        onPick={pickEpisode}
+        temporadas={dispositivo === 'desktop' ? 'desplegable' : 'desplegable'}
+      />
+    ) : null;
+
+  // Según la disposición elegida en el laboratorio: poster + info arriba,
+  // reproductor debajo. Los capítulos/temporadas van en un panel lateral solo
+  // si es serie y hay sitio.
+  const conPanel = !esMovil && capitulos !== null;
+
+  const escenario = (
+    <div className="detail-video">
+      <div className="detail-media">
+        {pending && (
+          <div className="stage-wait" role="status">
+            <span className="stage-spinner" aria-hidden="true" />
+            <p className="stage-wait-title">
+              {indice?.episode
+                ? `Buscando T${indice.episode.season}E${indice.episode.episode}`
+                : 'Buscando un servidor que funcione'}
+            </p>
+            <p className="stage-wait-sub">
+              {elapsed} s · {enPrueba}
+            </p>
+            <p className="stage-wait-note">
+              Arrancamos un navegador para descifrar la dirección del vídeo. Tarda.
+            </p>
+          </div>
+        )}
+
+        {playback.phase === 'listo' && (
+          <PlayerBridge
+            key={playerNonce}
+            state={playback}
+            title={title}
+            poster={poster}
+            reconnecting={recuperando}
+            onFail={manejarFalloReproductor}
+            onProgress={guardarProgreso}
+            onEnded={alTerminar}
+            onEndNearChange={alAcercarseElFinal}
+            onPlayStateChange={alCambiarReproduccion}
+          />
+        )}
+
+        {playback.phase === 'fallo' && (
+          <Failure
+            playback={playback}
+            onTryAnother={nextId ? () => void pickServer(nextId) : undefined}
+            onChangeSource={
+              fuentes.length > 1
+                ? () => {
+                    const i = fuentes.indexOf(entry?.source ?? fuentes[0]);
+                    pickSource(entradasPorFuente.get(fuentes[(i + 1) % fuentes.length])!);
+                  }
+                : undefined
+            }
+          />
+        )}
       </div>
 
-      <div className="detail-grid">
-        <div className="detail-side">
-          <div className="detail-art">
-            {poster ? (
-              <img src={`/api/img?u=${encodeURIComponent(poster)}`} alt="" decoding="async" />
-            ) : (
-              <div className="card-fallback" aria-hidden="true">
-                <span>{title.charAt(0).toUpperCase()}</span>
-              </div>
-            )}
+      {/*
+       * Aviso de que el video ha reanudado donde se dejo. El video ya viene
+       * arrancado en ese minuto: esto lo dice y ofrece empezar de cero, que
+       * es lo unico que no puede hacer el solo.
+       */}
+      {avisoReanudar && playback.phase === 'listo' && playback.resumeAt && autoNext === null ? (
+        <div className="next-up" role="status">
+          <p className="next-up-text">Reanudado en {formatarTiempo(playback.resumeAt)}</p>
+          <div className="next-up-actions">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                setAvisoReanudar(false);
+                setResumeAt(null);
+                setPlayback({ ...playback, resumeAt: 0 });
+                setPlayerNonce((n) => n + 1);
+              }}
+            >
+              Empezar de cero
+            </button>
           </div>
+        </div>
+      ) : null}
 
+      {/*
+       * Aviso de fin de capitulo. Se ofrece el salto, no se impone: un
+       * boton de cancelar al lado deja claro que el usuario manda.
+       */}
+      {autoNext !== null && siguiente && (
+        <div className="next-up" role="status">
+          <p className="next-up-text">
+            Siguiente capítulo en {autoNext} s
+            <span className="next-up-sub"> · T{siguiente.season}E{siguiente.episode}</span>
+          </p>
+          <div className="next-up-actions">
+            <button
+              type="button"
+              className="next-up-go"
+              onClick={() => {
+                setAutoNext(null);
+                pickEpisode(siguiente);
+              }}
+            >
+              Ver ahora
+            </button>
+            <button type="button" className="ghost-btn" onClick={cancelarAutoNext}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const titulo = (
+    <div className="detail-info">
+      <div className="detail-heading">
+        <div className="detail-heading-texto">
           <h1 className="detail-title">{title}</h1>
           <p className="detail-facts">
             {detail?.kind
@@ -757,11 +868,9 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
             {card.year}
             {card.rating && <span className="card-rating">{card.rating}</span>}
           </p>
+        </div>
 
-          {(detail?.synopsis ?? card.synopsis) && (
-            <p className="detail-synopsis">{detail?.synopsis ?? card.synopsis}</p>
-          )}
-
+        <div className="detail-actions">
           <button
             type="button"
             className="fav-btn"
@@ -776,8 +885,8 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
           {/*
            * Marcar como visto. Es un boton y no un gesto oculto porque es una
            * decision del usuario: "este capitulo ya lo vi y no quiero que me lo
-           * ofrezca otra vez". Convive con la barra de progreso sin pisarla: el
-           * progreso mide, esto decide.
+           * ofrezca otra vez". Convive con la barra de progreso sin pisarla:
+           * el progreso mide, esto decide.
            */}
           <button
             type="button"
@@ -797,165 +906,156 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
                 ? 'Marcar capítulo visto'
                 : 'Marcar como visto'}
           </button>
-
-          {fuentes.length > 1 && (
-            <div className="switcher">
-              <h2 className="switcher-label">Fuente</h2>
-              <div className="switcher-options">
-                {fuentes.map((id) => {
-                  const e = entradasPorFuente.get(id)!;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      className="switcher-option"
-                      data-active={e.source === entry?.source || undefined}
-                      style={{ ['--accent' as string]: accentBySource[id] ?? '#8d8983' }}
-                      onClick={() => pickSource(e)}
-                    >
-                      {e.sourceLabel}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {indice && indice.seasons.length > 0 && (
-            <EpisodePicker
-              indice={indice}
-              pending={pending}
-              vistos={watchedDeEste ?? null}
-              onPick={pickEpisode}
-            />
-          )}
-
-          {detail && detail.servers.length > 0 && (
-            <div className="switcher">
-              <h2 className="switcher-label">
-                Servidor
-                {detail.servers.length > 1 && (
-                  <span className="switcher-hint">si uno falla, prueba otro</span>
-                )}
-              </h2>
-              <div className="switcher-options">
-                {detail.servers.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className="switcher-option"
-                    data-active={s.id === serverId || undefined}
-                    disabled={pending}
-                    onClick={() => void pickServer(s.id)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+      </div>
 
-        <div className="detail-stage">
-          {pending && (
-            <div className="stage-wait" role="status">
-              <span className="stage-spinner" aria-hidden="true" />
-              <p className="stage-wait-title">
-                {indice?.episode ? `Buscando T${indice.episode.season}E${indice.episode.episode}` : 'Buscando un servidor que funcione'}
-              </p>
-              <p className="stage-wait-sub">
-                {elapsed} s · {enPrueba}
-              </p>
-              <p className="stage-wait-note">
-                Arrancamos un navegador para descifrar la dirección del vídeo. Tarda.
-              </p>
-            </div>
-          )}
+      {(detail?.synopsis ?? card.synopsis) && (
+        <p className="detail-synopsis">{detail?.synopsis ?? card.synopsis}</p>
+      )}
+    </div>
+  );
 
-          {playback.phase === 'listo' && (
-            <PlayerBridge
-              key={playerNonce}
-              state={playback}
-              title={title}
-              poster={poster}
-              reconnecting={recuperando}
-              onFail={manejarFalloReproductor}
-              onProgress={guardarProgreso}
-              onEnded={alTerminar}
-              onEndNearChange={alAcercarseElFinal}
-              onPlayStateChange={alCambiarReproduccion}
+  const selectorFuente =
+    fuentes.length > 1 ? (
+      <div className="switcher">
+        <h2 className="switcher-label">Fuente</h2>
+        <div className="switcher-options">
+          {fuentes.map((id) => {
+            const e = entradasPorFuente.get(id)!;
+            return (
+              <button
+                key={id}
+                type="button"
+                className="switcher-option"
+                data-active={e.source === entry?.source || undefined}
+                style={{ ['--accent' as string]: accentBySource[id] ?? '#8d8983' }}
+                onClick={() => pickSource(e)}
+              >
+                {e.sourceLabel}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
+  const selectorServidores =
+    detail && detail.servers.length > 0 ? (
+      esMovil ? (
+        <label className="detail-select-servidor">
+          <span className="switcher-label">
+            Servidor
+            {detail.servers.length > 1 && (
+              <span className="switcher-hint">{detail.servers.length} disponibles</span>
+            )}
+          </span>
+          <select
+            className="detail-select"
+            value={serverId ?? ''}
+            disabled={pending}
+            onChange={(e) => void pickServer(e.target.value)}
+          >
+            {!serverId && (
+              <option value="" disabled>
+                Elegir servidor
+              </option>
+            )}
+            {detail.servers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <div className="switcher">
+          <h2 className="switcher-label">
+            Servidor
+            {detail.servers.length > 1 && (
+              <span className="switcher-hint">si uno falla, prueba otro</span>
+            )}
+          </h2>
+          <div className="switcher-options">
+            {detail.servers.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className="switcher-option"
+                data-active={s.id === serverId || undefined}
+                disabled={pending}
+                onClick={() => void pickServer(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )
+    ) : null;
+
+  return (
+    <div
+      className="detail"
+      data-device={dispositivo}
+      style={
+        {
+          '--detail-ancho': `${ancho}px`,
+          '--detail-gap': `${separacion}px`,
+        } as CSSProperties
+      }
+    >
+      <div className="detail-bar">
+        <button type="button" className="detail-back" onClick={onBack}>
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M19 12H5M11 6l-6 6 6 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
-          )}
+          </svg>
+          Resultados
+        </button>
+      </div>
 
+      <div className="detail-scroll">
+        <div className="detail-ficha">
           {/*
-           * Aviso de que el video ha reanudado donde se dejo. El video ya viene
-           * arrancado en ese minuto: esto lo dice y ofrece empezar de cero, que
-           * es lo unico que no puede hacer el solo.
+           * Orden según el laboratorio: poster + título/sinopsis/servidores
+           * arriba, reproductor abajo. Los capítulos/temporadas van en un
+           * panel lateral solo si hay serie.
            */}
-          {avisoReanudar && playback.phase === 'listo' && playback.resumeAt && autoNext === null ? (
-            <div className="next-up" role="status">
-              <p className="next-up-text">
-                Reanudado en {formatarTiempo(playback.resumeAt)}
-              </p>
-              <div className="next-up-actions">
-                <button
-                  type="button"
-                  className="ghost-btn"
-                  onClick={() => {
-                    setAvisoReanudar(false);
-                    setResumeAt(null);
-                    setPlayback({ ...playback, resumeAt: 0 });
-                    setPlayerNonce((n) => n + 1);
-                  }}
-                >
-                  Empezar de cero
-                </button>
-              </div>
-            </div>
-          ) : null}
+          <div
+            className="detail-hero"
+            data-poster={esMovil ? 'oculto' : 'lateral'}
+            data-panel={conPanel ? 'capitulos' : 'ninguno'}
+          >
+            {!esMovil && posterLateral}
 
-          {/*
-           * Aviso de fin de capitulo. Se ofrece el salto, no se impone: un
-           * boton de cancelar al lado deja claro que el usuario manda.
-           */}
-          {autoNext !== null && siguiente && (
-            <div className="next-up" role="status">
-              <p className="next-up-text">
-                Siguiente capítulo en {autoNext} s
-                <span className="next-up-sub"> · T{siguiente.season}E{siguiente.episode}</span>
-              </p>
-              <div className="next-up-actions">
-                <button
-                  type="button"
-                  className="next-up-go"
-                  onClick={() => {
-                    setAutoNext(null);
-                    pickEpisode(siguiente);
-                  }}
-                >
-                  Ver ahora
-                </button>
-                <button type="button" className="ghost-btn" onClick={cancelarAutoNext}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
+            <div className="detail-main">
+              {titulo}
+              {selectorFuente}
+              {selectorServidores}
 
-          {playback.phase === 'fallo' && (
-            <Failure
-              playback={playback}
-              onTryAnother={nextId ? () => void pickServer(nextId) : undefined}
-              onChangeSource={
-                fuentes.length > 1
-                  ? () => {
-                      const i = fuentes.indexOf(entry?.source ?? fuentes[0]);
-                      pickSource(entradasPorFuente.get(fuentes[(i + 1) % fuentes.length])!);
-                    }
-                  : undefined
-              }
-            />
-          )}
+              {esMovil && capitulos && (
+                <details className="detail-chapters" open>
+                  <summary>
+                    Capítulos de la temporada
+                    {indice?.episode && (
+                      <span className="switcher-hint"> · T{indice.episode.season}</span>
+                    )}
+                  </summary>
+                  {capitulos}
+                </details>
+              )}
+            </div>
+
+            {conPanel && <aside className="detail-panel">{capitulos}</aside>}
+          </div>
+
+          {escenario}
         </div>
       </div>
     </div>
@@ -982,12 +1082,15 @@ function EpisodePicker({
   pending,
   vistos,
   onPick,
+  temporadas = 'fila',
 }: {
   indice: SeriesIndex;
   pending: boolean;
   /** Claves `"s:e"` ya marcadas como vistas, para atenuarlas. */
   vistos: WatchedMap | null;
   onPick(pos: EpisodeRef): void;
+  /** En pantallas estrechas la fila de temporadas no cabe: se cambia por un menu. */
+  temporadas?: 'fila' | 'desplegable';
 }) {
   const { seasons, episodes, episode } = indice;
 
@@ -1003,19 +1106,38 @@ function EpisodePicker({
         {seasons.length > 1 && <span className="switcher-hint">{seasons.length} disponibles</span>}
       </h2>
       <div className="switcher-options ep-seasons">
-        {seasons.map((s) => (
-          <button
-            key={s.season}
-            type="button"
-            className="switcher-option ep-season"
-            data-active={s.season === episode?.season || undefined}
-            title={s.name ?? `Temporada ${s.season}`}
+        {temporadas === 'fila' ? (
+          seasons.map((s) => (
+            <button
+              key={s.season}
+              type="button"
+              className="switcher-option ep-season"
+              data-active={s.season === episode?.season || undefined}
+              title={s.name ?? `Temporada ${s.season}`}
+              disabled={pending}
+              onClick={() => onPick({ season: s.season, episode: s.first })}
+            >
+              T{s.season}
+            </button>
+          ))
+        ) : (
+          <select
+            className="detail-select"
+            value={episode?.season ?? seasons[0]?.season ?? ''}
             disabled={pending}
-            onClick={() => onPick({ season: s.season, episode: s.first })}
+            onChange={(e) => {
+              const s = seasons.find((x) => x.season === Number(e.target.value));
+              if (s) onPick({ season: s.season, episode: s.first });
+            }}
+            aria-label="Temporada"
           >
-            T{s.season}
-          </button>
-        ))}
+            {seasons.map((s) => (
+              <option key={s.season} value={s.season}>
+                {s.name ?? `Temporada ${s.season}`}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <h2 className="switcher-label ep-label">

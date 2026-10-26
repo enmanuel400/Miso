@@ -746,19 +746,11 @@
 }
 
 .lab-player-hero[data-poster='lateral'] {
-  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-columns: 120px minmax(0, 1fr);
 }
 
-.lab-player-hero[data-poster='lateral'][data-panel='capitulos'],
-.lab-player-hero[data-poster='lateral'][data-panel='informacion'] {
-  grid-template-columns: 150px minmax(0, 1fr) 260px;
-}
-
-.lab-player-hero[data-poster='cabecera'][data-panel='capitulos'],
-.lab-player-hero[data-poster='cabecera'][data-panel='informacion'],
-.lab-player-hero[data-poster='oculto'][data-panel='capitulos'],
-.lab-player-hero[data-poster='oculto'][data-panel='informacion'] {
-  grid-template-columns: minmax(0, 1fr) 260px;
+.lab-player-hero[data-poster='lateral'][data-panel='capitulos'] {
+  grid-template-columns: 120px minmax(0, 1fr) 280px;
 }
 
 .lab-player-main {
@@ -880,6 +872,8 @@
 .lab-poster {
   display: grid;
   place-items: center;
+  width: 120px;
+  max-width: 100%;
   aspect-ratio: 2 / 3;
   border: 1px solid var(--line);
   border-radius: 8px;

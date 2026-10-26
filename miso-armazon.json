@@ -1,0 +1,102 @@
+{
+  "laboratorio": "armazon",
+  "version": 1,
+  "disposiciones": {
+    "desktop": {
+      "cabecera": "lateral",
+      "buscador": "icono",
+      "secciones": [
+        {
+          "id": "continuar",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 168,
+          "separacion": 16,
+          "cantidad": 6
+        },
+        {
+          "id": "novedades",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 168,
+          "separacion": 16,
+          "cantidad": 10
+        },
+        {
+          "id": "resultados",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 168,
+          "separacion": 16,
+          "cantidad": 10
+        }
+      ],
+      "barraInferior": "auto",
+      "anchoContenido": 0
+    },
+    "tablet": {
+      "cabecera": "lateral",
+      "buscador": "icono",
+      "secciones": [
+        {
+          "id": "continuar",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 156,
+          "separacion": 16,
+          "cantidad": 4
+        },
+        {
+          "id": "novedades",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 156,
+          "separacion": 16,
+          "cantidad": 10
+        },
+        {
+          "id": "resultados",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 156,
+          "separacion": 16,
+          "cantidad": 10
+        }
+      ],
+      "barraInferior": "auto",
+      "anchoContenido": 0
+    },
+    "mobile": {
+      "cabecera": "arriba",
+      "buscador": "icono",
+      "secciones": [
+        {
+          "id": "continuar",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 132,
+          "separacion": 10,
+          "cantidad": 4
+        },
+        {
+          "id": "novedades",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 132,
+          "separacion": 10,
+          "cantidad": 10
+        },
+        {
+          "id": "resultados",
+          "visible": true,
+          "formato": "rejilla",
+          "tamano": 132,
+          "separacion": 10,
+          "cantidad": 10
+        }
+      ],
+      "barraInferior": "auto",
+      "anchoContenido": 0
+    }
+  }
+}

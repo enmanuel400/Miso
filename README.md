@@ -36,15 +36,30 @@ Node local y lo apaga cuando la aplicación se cierra.
 - **Tema oscuro** fijo y **detalle técnico solo cuando algo falla**.
 - **Sin rastreadores, sin cuentas, sin publicidad.** Todo ocurre en tu equipo.
 
+## Novedades
+
+- **Ficha reorganizada**: poster más grande junto al título, sinopsis, acciones y servidores.
+- **Reproductor abajo**: el vídeo aparece debajo de la ficha con mayor ancho.
+- **Capítulos al lado**: en series, temporadas y capítulos van en un panel lateral (desplegable en móvil); en películas solo poster + ficha.
+- **Búsqueda como icono**: se oculta hasta pulsar el icono del lateral/encabezado, se cierra con Escape o la X.
+
 ## Capturas
 
 <p align="center">
   <img src="docs/screenshots/inicio.webp" width="49%" alt="Pantalla de inicio con «Continuar viendo» y los estrenos más recientes" />
-  <img src="docs/screenshots/busqueda.webp" width="49%" alt="Búsqueda federada: los mismos resultados de las cuatro fuentes en una sola cuadrícula" />
+  <img src="docs/screenshots/generos.webp" width="49%" alt="Búsqueda por género con resultados federados" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/ficha.webp" width="49%" alt="Ficha de un título con sus servidores disponibles" />
-  <img src="docs/screenshots/reproductor.webp" width="49%" alt="Reproductor integrado en la app, sin salir de ella" />
+  <img src="docs/screenshots/busqueda.webp" width="49%" alt="Búsqueda federada: los mismos resultados de las cuatro fuentes en una sola cuadrícula" />
+  <img src="docs/screenshots/ficha.webp" width="49%" alt="Ficha de un título con poster grande, sinopsis y servidores" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/reproductor.webp" width="49%" alt="Reproductor integrado en la app, con poster y capítulos al lado en series" />
+  <img src="docs/screenshots/historial.webp" width="49%" alt="Historial de visualización" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/favoritos.webp" width="49%" alt="Favoritos guardados" />
+  <img src="docs/screenshots/ajustes.webp" width="49%" alt="Ajustes de la aplicación" />
 </p>
 
 ### En móvil (Android)

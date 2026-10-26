@@ -4,6 +4,7 @@ import { useLibrary } from '../lib/library.js';
 import { restante } from '../lib/progress.js';
 import { failedSources, mergeResults } from '../lib/merge.js';
 import type { AggregatedSearch, SourceMeta, TitleCard } from '../lib/types.js';
+import { IconClose } from './Icons.js';
 import { ResultCard } from './ResultCard.js';
 import { SkeletonGrid } from './Skeletons.js';
 
@@ -24,6 +25,11 @@ interface Props {
   sources: SourceMeta[];
   accentBySource: Record<string, string>;
   onOpen(card: TitleCard): void;
+  /** Cambia cada vez que se pulsa el icono de buscar: vuelve a enfocar el campo. */
+  focusSignal?: number;
+  /** La disposicion deja el buscador como icono: el campo se despliega al pedirlo. */
+  buscadorAbierto: boolean;
+  onCerrarBusqueda(): void;
 }
 
 /**
@@ -67,7 +73,14 @@ interface Inicio {
   error: string | null;
 }
 
-export function SearchView({ sources, accentBySource, onOpen }: Props) {
+export function SearchView({
+  sources,
+  accentBySource,
+  onOpen,
+  focusSignal = 0,
+  buscadorAbierto,
+  onCerrarBusqueda,
+}: Props) {
   const [input, setInput] = useState('');
   const [phase, setPhase] = useState<Phase>({ kind: 'vacio' });
   const [inicio, setInicio] = useState<Inicio>({ data: null, cargando: true, error: null });
@@ -80,8 +93,23 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
   const cuantas = nombres.length;
 
   useEffect(() => {
+    if (!buscadorAbierto) return;
     inputRef.current?.focus();
-  }, []);
+  }, [focusSignal, buscadorAbierto]);
+
+  /**
+   * Cerrar la busqueda devuelve el inicio tal como estaba.
+   *
+   * Se vacia el campo a proposito: si se ocultara la caja dejando la consulta,
+   * al volver a abrirla aparecerian unos resultados que ya no se recuerdan
+   * haber pedido. Cerrar es salir de la busqueda, no esconderla.
+   */
+  const cerrar = useCallback(() => {
+    abort.current?.abort();
+    setInput('');
+    setPhase({ kind: 'vacio' });
+    onCerrarBusqueda();
+  }, [onCerrarBusqueda]);
 
   /**
    * Carga lo mas nuevo una vez, al montar.
@@ -187,34 +215,53 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
   }, [history]);
 
   return (
-    <div className="search">
-      <header className="search-head">
-        <div className="searchbar">
-          <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-            <path d="M11 11l3.4 3.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              cuantas ? `Busca una película en ${cuantas} fuentes` : 'Busca una película'
-            }
-            aria-label="Buscar"
-            spellCheck={false}
-            autoComplete="off"
-          />
-          {phase.kind === 'buscando' && <span className="searchbar-spinner" aria-hidden="true" />}
-        </div>
+    <div className="search" data-buscador={buscadorAbierto ? 'abierto' : 'cerrado'}>
+      {buscadorAbierto && (
+        <header className="search-head">
+          <div className="searchbar">
+            <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <path
+                d="M11 11l3.4 3.4"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') cerrar();
+              }}
+              placeholder={
+                cuantas ? `Busca una película en ${cuantas} fuentes` : 'Busca una película'
+              }
+              aria-label="Buscar"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {phase.kind === 'buscando' && <span className="searchbar-spinner" aria-hidden="true" />}
+            <button
+              type="button"
+              className="searchbar-close"
+              onClick={cerrar}
+              aria-label="Cerrar búsqueda"
+              title="Cerrar búsqueda"
+            >
+              <IconClose size={14} />
+            </button>
+          </div>
 
-        {phase.kind === 'listo' && (
-          <span className="search-count">
-            {cards.length} {cards.length === 1 ? 'título' : 'títulos'}
-            <span className="search-ms"> · {(phase.data.totalMs / 1000).toFixed(2)} s</span>
-          </span>
-        )}
-      </header>
+          {phase.kind === 'listo' && (
+            <span className="search-count">
+              {cards.length} {cards.length === 1 ? 'título' : 'títulos'}
+              <span className="search-ms"> · {(phase.data.totalMs / 1000).toFixed(2)} s</span>
+            </span>
+          )}
+        </header>
+      )}
 
       <div className="search-body">
         {phase.kind === 'fallo' && (
@@ -291,7 +338,10 @@ export function SearchView({ sources, accentBySource, onOpen }: Props) {
                   <strong>{n}</strong>
                 </span>
               ))}
-              {cuantas > 0 && '. También puedes escribir el nombre de algo.'}
+              {cuantas > 0 &&
+                (buscadorAbierto
+                  ? '. También puedes escribir el nombre de algo.'
+                  : '. Usa la lupa para buscar algo.')}
             </p>
 
             {inicio.error && (

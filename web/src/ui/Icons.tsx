@@ -76,6 +76,16 @@ export function IconSettings({ size = 16, ...rest }: Props) {
   );
 }
 
+/** Lupa: la entrada al buscador desde el riel y la cabecera del movil. */
+export function IconSearch({ size = 16, ...rest }: Props) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="11" cy="11" r="6.4" />
+      <path d="M15.8 15.8 20 20" />
+    </svg>
+  );
+}
+
 export function IconClose({ size = 15, ...rest }: Props) {
   return (
     <svg {...baseProps(size)} {...rest}>

@@ -1,0 +1,45 @@
+{
+  "laboratorio": "reproductor",
+  "version": 1,
+  "disposiciones": {
+    "desktop": {
+      "reproductor": "contenido",
+      "poster": "lateral",
+      "panel": "capitulos",
+      "capitulos": "panel",
+      "temporadas": "desplegable",
+      "servidores": "encima",
+      "acciones": "titulo",
+      "avisos": "esquina",
+      "orden": "info-arriba",
+      "ancho": 1240,
+      "separacion": 24
+    },
+    "tablet": {
+      "reproductor": "ancho",
+      "poster": "cabecera",
+      "panel": "capitulos",
+      "capitulos": "panel",
+      "temporadas": "desplegable",
+      "servidores": "debajo",
+      "acciones": "titulo",
+      "avisos": "esquina",
+      "orden": "reproductor-arriba",
+      "ancho": 960,
+      "separacion": 20
+    },
+    "mobile": {
+      "reproductor": "ancho",
+      "poster": "oculto",
+      "panel": "ninguno",
+      "capitulos": "desplegable",
+      "temporadas": "desplegable",
+      "servidores": "menu",
+      "acciones": "titulo",
+      "avisos": "arriba",
+      "orden": "reproductor-arriba",
+      "ancho": 480,
+      "separacion": 16
+    }
+  }
+}

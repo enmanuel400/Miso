@@ -29,6 +29,8 @@ export function App() {
   const { status, start, stop, versions } = useServer();
   const [metas, setMetas] = useState<SourceInfo[]>([]);
   const [seccion, setSeccion] = useState<Seccion>('inicio');
+  const [buscar, setBuscar] = useState(0);
+  const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const library = useLibrary();
 
   const accentBySource = Object.fromEntries(metas.map((m) => [m.id, m.accent]));
@@ -64,6 +66,17 @@ export function App() {
   );
   const close = useCallback(() => setAbierto(null), []);
 
+  // El icono de buscar del riel no abre un dialogo aparte: lleva al inicio y
+  // despliega el campo que ya existe. La disposicion elegida deja el buscador
+  // como icono, asi que el campo no ocupa sitio hasta que se pide.
+  const abrirBusqueda = useCallback(() => {
+    setSeccion('inicio');
+    setBuscadorAbierto(true);
+    setBuscar((n) => n + 1);
+  }, []);
+
+  const cerrarBusqueda = useCallback(() => setBuscadorAbierto(false), []);
+
   const enArranque =
     status.state === 'apagado' ||
     status.state === 'error' ||
@@ -87,10 +100,21 @@ export function App() {
            * la posicion) y al volver se ve exactamente lo que se estaba viendo.
            */}
           <div className="shell" hidden={abierto !== null}>
-            <AppHeader seccion={seccion} onSeccion={setSeccion} />
+            <AppHeader
+              seccion={seccion}
+              onSeccion={setSeccion}
+              onBuscar={abrirBusqueda}
+            />
             <main className="view">
               {seccion === 'inicio' && (
-                <SearchView sources={metas} accentBySource={accentBySource} onOpen={open} />
+                <SearchView
+                  sources={metas}
+                  accentBySource={accentBySource}
+                  onOpen={open}
+                  focusSignal={buscar}
+                  buscadorAbierto={buscadorAbierto}
+                  onCerrarBusqueda={cerrarBusqueda}
+                />
               )}
               {seccion === 'generos' && (
                 <GenresView accentBySource={accentBySource} onOpen={open} />

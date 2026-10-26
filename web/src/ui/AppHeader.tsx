@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { LogoMark } from './Logo.js';
-import { IconGenres, IconHistory, IconHome, IconSettings, IconStar } from './Icons.js';
+import { IconGenres, IconHistory, IconHome, IconSearch, IconSettings, IconStar } from './Icons.js';
 
 /**
  * Cabecera unica de la aplicacion.
@@ -9,6 +9,9 @@ import { IconGenres, IconHistory, IconHome, IconSettings, IconStar } from './Ico
  * aparecer tres pantallas mas, la marca y la navegacion tienen que ser de todas
  * y no de la primera: de lo contrario cada vista nueva repetiria el logotipo y
  * habria cuatro sitios donde olvidarse de actualizarlo.
+ *
+ * En escritorio y tablet es un riel de iconos que se abre al pasar el cursor; en
+ * el movil vuelve a ser una fila, que es donde no cabe una columna fija.
  */
 
 export type Seccion = 'inicio' | 'generos' | 'favoritos' | 'historial' | 'ajustes';
@@ -16,6 +19,8 @@ export type Seccion = 'inicio' | 'generos' | 'favoritos' | 'historial' | 'ajuste
 interface Props {
   seccion: Seccion;
   onSeccion(seccion: Seccion): void;
+  /** Lleva al inicio y deja el campo de busqueda listo para escribir. */
+  onBuscar(): void;
 }
 
 const ITEMS: { id: Seccion; label: string; Icono: ComponentType<{ size?: number }> }[] = [
@@ -26,7 +31,7 @@ const ITEMS: { id: Seccion; label: string; Icono: ComponentType<{ size?: number 
   { id: 'ajustes', label: 'Ajustes', Icono: IconSettings },
 ];
 
-export function AppHeader({ seccion, onSeccion }: Props) {
+export function AppHeader({ seccion, onSeccion, onBuscar }: Props) {
   return (
     <header className="apphead">
       <button
@@ -54,6 +59,17 @@ export function AppHeader({ seccion, onSeccion }: Props) {
           </button>
         ))}
       </nav>
+
+      <button
+        type="button"
+        className="apphead-search"
+        onClick={onBuscar}
+        title="Buscar"
+        aria-label="Buscar"
+      >
+        <IconSearch size={15} />
+        <span>Buscar</span>
+      </button>
     </header>
   );
 }

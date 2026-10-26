@@ -119,6 +119,8 @@ export interface ReproductorDisposicion {
   servidores: 'debajo' | 'encima' | 'menu';
   acciones: 'titulo' | 'debajo';
   avisos: 'esquina' | 'arriba' | 'centro';
+  /** Orden: reproductor arriba, o poster+info arriba con el reproductor debajo. */
+  orden: 'reproductor-arriba' | 'info-arriba';
   /** Ancho maximo de la ficha. En pixeles. */
   ancho: number;
   /** Separacion entre bloques. En pixeles. */
@@ -137,6 +139,7 @@ export const REPRODUCTOR_POR_DEFECTO: ReproductorDisposiciones = {
     servidores: 'debajo',
     acciones: 'titulo',
     avisos: 'esquina',
+    orden: 'reproductor-arriba',
     ancho: 1240,
     separacion: 24,
   },
@@ -149,6 +152,7 @@ export const REPRODUCTOR_POR_DEFECTO: ReproductorDisposiciones = {
     servidores: 'debajo',
     acciones: 'titulo',
     avisos: 'esquina',
+    orden: 'reproductor-arriba',
     ancho: 960,
     separacion: 20,
   },
@@ -161,6 +165,7 @@ export const REPRODUCTOR_POR_DEFECTO: ReproductorDisposiciones = {
     servidores: 'menu',
     acciones: 'titulo',
     avisos: 'arriba',
+    orden: 'reproductor-arriba',
     ancho: 480,
     separacion: 16,
   },

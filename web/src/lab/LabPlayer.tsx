@@ -95,6 +95,15 @@ export function LabReproductor() {
             descripcion="La ficha es la pantalla que aparece al abrir un título. Los avisos son los de «reanudado» y «siguiente capítulo»."
           >
             <Segmentado
+              label="Orden"
+              value={config.orden ?? 'reproductor-arriba'}
+              options={[
+                { value: 'reproductor-arriba', label: 'Reproductor arriba' },
+                { value: 'info-arriba', label: 'Poster + info arriba' },
+              ]}
+              onChange={(orden) => patch({ orden: orden as ReproductorDisposicion['orden'] })}
+            />
+            <Segmentado
               label="Ancho del reproductor"
               value={config.reproductor}
               options={[
@@ -218,6 +227,50 @@ function VistaReproductor({
     '--lab-gap': `${config.separacion}px`,
   } as CSSProperties;
 
+  const esSerie = true;
+  const conPanel = device !== 'mobile' && esSerie && config.panel !== 'ninguno' && config.capitulos === 'panel';
+  const orden = config.orden ?? 'reproductor-arriba';
+
+  const info = (
+    <div className="lab-player-hero" data-poster={config.poster === 'oculto' ? 'oculto' : 'lateral'} data-panel={conPanel ? 'capitulos' : 'ninguno'}>
+      {config.poster !== 'oculto' && <Poster />}
+
+      <div className="lab-player-main">
+        <div className="lab-titulo-bloque">
+          <h2 className="detail-title">Sobrenatural</h2>
+          <p className="detail-facts">
+            2005 <span>·</span> {esSerie ? 'Serie' : 'Película'} <span>·</span> 15 temporadas
+            <span className="card-rating">8.4</span>
+          </p>
+          <p className="lab-sinopsis">
+            Sam y Dean Winchester recorren Estados Unidos cazando lo sobrenatural. La
+            ficha reúne los capítulos de todas las fuentes en una sola lista.
+          </p>
+          {config.acciones === 'titulo' && <Acciones />}
+        </div>
+
+        {config.servidores !== 'debajo' && <Servidores config={config} />}
+
+        {config.acciones === 'debajo' && <Acciones />}
+
+        {config.servidores === 'debajo' && <Servidores config={config} />}
+
+        {device === 'mobile' && esSerie && (
+          <details className="lab-desplegable" open>
+            <summary>Capítulos de la temporada</summary>
+            <Capitulos config={config} dentro />
+          </details>
+        )}
+      </div>
+
+      {conPanel && (
+        <aside className="lab-player-aside">
+          <Capitulos config={config} />
+        </aside>
+      )}
+    </div>
+  );
+
   return (
     <div className="lab-frame" data-device={device}>
       <div className="lab-player" style={estilo}>
@@ -228,60 +281,17 @@ function VistaReproductor({
 
         <div className="lab-player-scroll">
           <div className="lab-player-inner">
-            {config.reproductor === 'ancho' && <Video />}
-
-            <div className="lab-player-hero" data-poster={config.poster} data-panel={config.panel}>
-              {config.poster === 'lateral' && <Poster />}
-
-              <div className="lab-player-main">
-                {config.poster === 'cabecera' && <PosterCabecera />}
-
-                <div className="lab-titulo-bloque">
-                  <h2 className="detail-title">Sobrenatural</h2>
-                  <p className="detail-facts">
-                    2005 <span>·</span> Serie <span>·</span> 15 temporadas
-                    <span className="card-rating">8.4</span>
-                  </p>
-                  <p className="lab-sinopsis">
-                    Sam y Dean Winchester recorren Estados Unidos cazando lo sobrenatural. La
-                    ficha reúne los capítulos de todas las fuentes en una sola lista.
-                  </p>
-                  {config.acciones === 'titulo' && <Acciones />}
-                </div>
-
-                {(config.servidores === 'encima' || config.servidores === 'menu') && (
-                  <Servidores config={config} />
-                )}
-
-                {config.reproductor === 'contenido' && <Video />}
-
-                {config.acciones === 'debajo' && <Acciones />}
-
-                {config.servidores === 'debajo' && <Servidores config={config} />}
-
-                {config.panel !== 'capitulos' && config.capitulos === 'debajo' && (
-                  <Capitulos config={config} />
-                )}
-
-                {config.panel !== 'capitulos' && config.capitulos === 'desplegable' && (
-                  <details className="lab-desplegable" open>
-                    <summary>Capítulos de la temporada</summary>
-                    <Capitulos config={config} dentro />
-                  </details>
-                )}
-              </div>
-
-              {config.panel === 'capitulos' && (
-                <aside className="lab-player-aside">
-                  <Capitulos config={config} />
-                </aside>
-              )}
-              {config.panel === 'informacion' && (
-                <aside className="lab-player-aside">
-                  <Informacion />
-                </aside>
-              )}
-            </div>
+            {orden === 'reproductor-arriba' ? (
+              <>
+                <Video />
+                {info}
+              </>
+            ) : (
+              <>
+                {info}
+                <Video />
+              </>
+            )}
           </div>
         </div>
 
@@ -311,14 +321,6 @@ function Video() {
 function Poster() {
   return (
     <div className="lab-poster" aria-hidden="true">
-      <span>S</span>
-    </div>
-  );
-}
-
-function PosterCabecera() {
-  return (
-    <div className="lab-poster-cabecera" aria-hidden="true">
       <span>S</span>
     </div>
   );
@@ -404,40 +406,6 @@ function Capitulos({
 
       <p className="ep-note">
         <strong>T2E5 · Simetría</strong> <span className="ep-meta">· 42 min</span>
-      </p>
-    </div>
-  );
-}
-
-function Informacion() {
-  return (
-    <div className="lab-info">
-      <p className="switcher-label">Ficha</p>
-      <dl className="lab-datos">
-        <div>
-          <dt>Año</dt>
-          <dd>2005</dd>
-        </div>
-        <div>
-          <dt>Estado</dt>
-          <dd>Terminada</dd>
-        </div>
-        <div>
-          <dt>Temporadas</dt>
-          <dd>15</dd>
-        </div>
-        <div>
-          <dt>Capítulos</dt>
-          <dd>327</dd>
-        </div>
-        <div>
-          <dt>Fuente</dt>
-          <dd>sololatino</dd>
-        </div>
-      </dl>
-      <p className="lab-sinopsis">
-        Sam y Dean Winchester recorren Estados Unidos en un Impala del 67 cazando lo sobrenatural.
-        Aquí irían también los datos que hoy viven en la columna izquierda de la ficha.
       </p>
     </div>
   );
