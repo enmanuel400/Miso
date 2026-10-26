@@ -137,10 +137,31 @@ export class HttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /**
+     * Milisegundos que la fuente pide esperar antes de reintentar.
+     *
+     * Sale de la cabecera `retry-after`, que es la unica forma de saber cuando
+     * se libera un limite de peticiones (por ejemplo el 429 de sololatino). Sin
+     * este dato solo queda adivinar, y adivinar de menos alarga el bloqueo.
+     */
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'HttpError';
   }
+}
+
+/** Lee `retry-after` en segundos o como fecha HTTP y lo devuelve en milisegundos. */
+function retryAfterDe(res: Response): number | null {
+  const valor = res.headers.get('retry-after');
+  if (!valor) return null;
+
+  const segundos = Number(valor);
+  if (Number.isFinite(segundos) && segundos >= 0) return Math.round(segundos * 1000);
+
+  const fecha = Date.parse(valor);
+  if (Number.isFinite(fecha)) return Math.max(0, fecha - Date.now());
+  return null;
 }
 
 export async function fetchText(url: string, opts: FetchOptions = {}): Promise<string> {
@@ -162,7 +183,7 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<s
     });
 
     if (!res.ok) {
-      throw new HttpError(`HTTP ${res.status} en ${url}`, res.status);
+      throw new HttpError(`HTTP ${res.status} en ${url}`, res.status, retryAfterDe(res));
     }
 
     const buf = Buffer.from(await res.arrayBuffer());
@@ -219,7 +240,7 @@ export async function fetchJson<T>(
     });
 
     if (!res.ok) {
-      throw new HttpError(`HTTP ${res.status} en ${url}`, res.status);
+      throw new HttpError(`HTTP ${res.status} en ${url}`, res.status, retryAfterDe(res));
     }
 
     return JSON.parse(await res.text()) as T;

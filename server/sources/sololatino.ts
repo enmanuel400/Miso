@@ -20,9 +20,79 @@ import {
   sinAnio,
   sinopsisUtil,
 } from './shared.js';
-import { fetchJson, fetchText } from '../http.js';
+import { fetchJson, fetchText, HttpError } from '../http.js';
+import { cacheGet, cacheSet, dedupe } from '../cache.js';
 import { descifrarEmbed69, esEmbed69, nombreIdioma } from './embed69.js';
 import { esVidhide, resolverVidhide } from './hosters.js';
+
+// ----------------------------------------------------------------------
+// Limite de peticiones del resolvedor de servidores
+// ----------------------------------------------------------------------
+//
+// `POST /api/player-url` admite 20 peticiones y responde 429 con `retry-after`
+// cuando se agotan. La aplicacion pedia dos por capitulo (una por cada boton) y
+// en rafaga, asi que abrir varios capitulos seguidos dejaba la fuente sin
+// servidores unos segundos. Medido: el mismo capitulo devuelve 3 servidores con
+// calma y 0 en rafaga; en el navegador, una sola peticion, funciona.
+//
+// Tres reglas para no reproducir el fallo: una peticion por capitulo (el boton
+// LATINO es el unico util), una espera minima entre peticiones y reintento
+// respetando lo que pida la fuente.
+
+const ESPACIO_ENTRE_PETICIONES_MS = 400;
+const MAX_REINTENTOS_429 = 2;
+const ESPERA_MAXIMA_429_MS = 15_000;
+const CACHE_SERVIDORES_MS = 3 * 60_000;
+
+/** Turno global: el limite es de la fuente, no de un capitulo. */
+let siguienteTurno = 0;
+
+async function esperarTurno(): Promise<void> {
+  const ahora = Date.now();
+  const turno = Math.max(ahora, siguienteTurno);
+  siguienteTurno = turno + ESPACIO_ENTRE_PETICIONES_MS;
+  const espera = turno - ahora;
+  if (espera > 0) await new Promise((listo) => setTimeout(listo, espera));
+}
+
+function dormir(ms: number): Promise<void> {
+  return new Promise((listo) => setTimeout(listo, ms));
+}
+
+/**
+ * Cambia un testigo por su URL real, reintentando si la fuente limita.
+ *
+ * El ultimo error se propaga tal cual: la capa de arriba necesita saber que fue
+ * un 429 para explicarlo, en vez de decir que el capitulo no tiene servidores.
+ */
+async function pedirUrlDelToken(
+  domain: string,
+  token: string,
+): Promise<{ url?: string; type?: string }> {
+  let ultimo: unknown = null;
+
+  for (let intento = 0; intento <= MAX_REINTENTOS_429; intento++) {
+    await esperarTurno();
+    try {
+      // Sin `Referer`: el `VerifyCsrfToken` de Laravel responde 419 cuando la
+      // peticion lo trae (medido: mismo POST, 200 sin cabecera y 419 con ella).
+      // El navegador del sitio no lo envia en este POST.
+      return await fetchJson<{ url?: string; type?: string }>(
+        `https://${domain}/api/player-url`,
+        { t: token },
+        { timeoutMs: 12_000 },
+      );
+    } catch (err) {
+      ultimo = err;
+      const esLimite = err instanceof HttpError && err.status === 429;
+      if (!esLimite || intento === MAX_REINTENTOS_429) break;
+      const espera = Math.min(ESPERA_MAXIMA_429_MS, (err.retryAfterMs ?? 1_500) + 150);
+      await dormir(espera);
+    }
+  }
+
+  throw ultimo;
+}
 
 /**
  * sololatino.net
@@ -132,63 +202,91 @@ export const sololatino: SourceAdapter = {
    */
   async fetchServers(domain, id, pos) {
     const pageUrl = this.playUrl(domain, id, pos ?? null);
-    const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
-    const $ = cheerio.load(html);
+    const cacheKey =
+      `sololatino:servers:${domain}:${id}:${pos?.season ?? 'x'}:${pos?.episode ?? 'x'}`;
 
-    const testigos: { label: string; token: string }[] = [];
-    $('[data-player-token]').each((_, el) => {
-      const token = cleanText($(el).attr('data-player-token'));
-      if (!token) return;
-      testigos.push({ label: cleanText($(el).text()) || 'Servidor', token });
-    });
+    // Abrir el mismo capitulo dos veces (reintentar, reconectar, volver atras)
+    // no debe costar otra peticion: el limite es corto y se agota en rafaga.
+    const cached = cacheGet<PlaybackServer[]>(cacheKey);
+    if (cached) return cached;
 
-    const resueltos = await Promise.all(
-      testigos.map(async (t) => {
+    return dedupe(cacheKey, async () => {
+      // Otra peticion identica pudo terminar mientras esta esperaba turno.
+      const yaEsta = cacheGet<PlaybackServer[]>(cacheKey);
+      if (yaEsta) return yaEsta;
+
+      const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
+      const $ = cheerio.load(html);
+
+      const testigos: { label: string; token: string }[] = [];
+      $('[data-player-token]').each((_, el) => {
+        const token = cleanText($(el).attr('data-player-token'));
+        if (!token) return;
+        testigos.push({ label: cleanText($(el).text()) || 'Servidor', token });
+      });
+
+      // "⭐ Principal" apunta a player.pelisserieshoy.com, que se descarta mas
+      // abajo; pedirlo solo gastaria una de las 20 peticiones. Se prefiere
+      // LATINO (embed69) y, si no estuviera, cualquier boton que no sea premium.
+      const latinos = testigos.filter((t) => /latino/i.test(t.label));
+      const candidatos =
+        latinos.length > 0
+          ? latinos
+          : testigos.filter((t) => !/principal|premium/i.test(t.label));
+
+      const urls: string[] = [];
+      for (const t of candidatos) {
         try {
-          // Sin `Referer`: el `VerifyCsrfToken` de Laravel responde 419 cuando
-          // la peticion lo trae (medido: mismo POST, 200 sin cabecera y 419 con
-          // ella). El navegador del sitio no lo envia en este POST.
-          const data = await fetchJson<{ url?: string; type?: string }>(
-            `https://${domain}/api/player-url`,
-            { t: t.token },
-            { timeoutMs: 12_000 },
-          );
-          return data.url ? { label: t.label, url: data.url } : null;
-        } catch {
-          return null;
+          const data = await pedirUrlDelToken(domain, t.token);
+          if (data.url) urls.push(data.url);
+        } catch (err) {
+          // Con 429 no tiene sentido seguir: los demas botones tambien fallaran
+          // y solo alargarian el bloqueo. Se propaga para poder explicarlo.
+          if (err instanceof HttpError && err.status === 429) throw err;
+          // Un boton roto no invalida los demas.
         }
-      }),
-    );
+      }
 
-    const servers: PlaybackServer[] = [];
-    for (const r of resueltos) {
-      if (!r || !esEmbed69(r.url)) continue;
-      const playerHtml = await fetchText(r.url, { referer: pageUrl }).catch(() => '');
-      const enlaces = descifrarEmbed69(playerHtml);
-
-      // La familia vidhide entrega el video real detras de un manifiesto
-      // senuelo; se resuelve aqui, en Node, para que el extractor reciba un
-      // `.m3u8` directo y no gaste navegador ni publicidad. El resto (voe pide
-      // captcha, streamwish esconde el player en un JS ofuscado aparte) se deja
-      // como embed, que es un recurso de reserva honesto.
-      const enlacesResueltos = await Promise.all(
-        enlaces.map(async (enlace) => {
-          if (!esVidhide(enlace.url)) return enlace;
-          const directo = await resolverVidhide(enlace.url).catch(() => null);
-          return directo ? { ...enlace, url: directo } : enlace;
-        }),
+      // Los embeds se bajan en paralelo: ya no pasan por el limite de la API.
+      const players = await Promise.all(
+        urls
+          .filter((url) => esEmbed69(url))
+          .map(async (url) => {
+            const playerHtml = await fetchText(url, { referer: pageUrl }).catch(() => '');
+            return descifrarEmbed69(playerHtml);
+          }),
       );
 
-      for (const enlace of enlacesResueltos) {
-        servers.push({
-          id: `sol-${servers.length + 1}`,
-          label: `${nombreIdioma(enlace.language)} · ${enlace.server}`,
-          embedUrl: enlace.url,
-          method: 'embed69',
-        });
+      const servers: PlaybackServer[] = [];
+      for (const enlaces of players) {
+        // La familia vidhide entrega el video real detras de un manifiesto
+        // senuelo; se resuelve aqui, en Node, para que el extractor reciba un
+        // `.m3u8` directo y no gaste navegador ni publicidad. El resto (voe pide
+        // captcha, streamwish esconde el player en un JS ofuscado aparte) se deja
+        // como embed, que es un recurso de reserva honesto.
+        const enlacesResueltos = await Promise.all(
+          enlaces.map(async (enlace) => {
+            if (!esVidhide(enlace.url)) return enlace;
+            const directo = await resolverVidhide(enlace.url).catch(() => null);
+            return directo ? { ...enlace, url: directo } : enlace;
+          }),
+        );
+
+        for (const enlace of enlacesResueltos) {
+          servers.push({
+            id: `sol-${servers.length + 1}`,
+            label: `${nombreIdioma(enlace.language)} · ${enlace.server}`,
+            embedUrl: enlace.url,
+            method: 'embed69',
+          });
+        }
       }
-    }
-    return servers;
+
+      // Solo se cachea lo que sirvio. Un fallo puntual no debe quedarse pegado
+      // tres minutos: justo despues de un 429 el reintento suele funcionar.
+      if (servers.length > 0) cacheSet(cacheKey, servers, CACHE_SERVIDORES_MS);
+      return servers;
+    });
   },
 
   /**

@@ -1,19 +1,36 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app.js';
+import { LabArmazon } from './lab/LabShell.js';
+import { LabReproductor } from './lab/LabPlayer.js';
 import { isDesktop } from './lib/useServer.js';
 import './app.css';
+import './lab/lab.css';
 
 /**
  * Punto de entrada unico.
  *
  * El prototipo de tres direcciones que se uso para elegir la direccion visual
  * se borro al decidirse: nada de esto depende ya de el.
+ *
+ * Las dos paginas de laboratorio se eligen por ruta y no por un enlace interno:
+ * son una mesa de trabajo aparte de la aplicacion, se abren escribiendo la
+ * direccion y no forman parte de la navegacion. El servidor ya devuelve el
+ * index para cualquier ruta que no sea `/api`, asi que funcionan tambien
+ * recargando.
  */
+
+const ruta = window.location.pathname.replace(/\/+$/, '');
+
+function Vista() {
+  if (ruta === '/lab') return <LabArmazon />;
+  if (ruta === '/lab/player') return <LabReproductor />;
+  return <App />;
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <Vista />
   </StrictMode>,
 );
 

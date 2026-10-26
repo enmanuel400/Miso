@@ -486,9 +486,19 @@ async function pedirServidores(
     trace?.(`servidores declarados por la fuente: ${extra.map((s) => s.label).join(', ')}`);
     return extra;
   } catch (err) {
-    trace?.(
-      `no se pudieron pedir los servidores a la fuente: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    // Un 429 no significa "no hay servidores": la fuente esta pidiendo calma.
+    // Decirlo evita que parezca que el capitulo esta roto.
+    if (err instanceof HttpError && err.status === 429) {
+      const espera =
+        err.retryAfterMs && err.retryAfterMs > 0
+          ? `espera unos ${Math.max(1, Math.ceil(err.retryAfterMs / 1000))} s`
+          : 'espera unos segundos';
+      trace?.(`la fuente esta limitando las peticiones: ${espera} y vuelve a intentar`);
+    } else {
+      trace?.(
+        `no se pudieron pedir los servidores a la fuente: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     return detail.servers;
   }
 }

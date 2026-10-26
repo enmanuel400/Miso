@@ -313,23 +313,100 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
    */
   const [autoNext, setAutoNext] = useState<number | null>(null);
 
-  const cancelarAutoNext = useCallback(() => setAutoNext(null), []);
+  /**
+   * Estado del final del video, para que la cuenta atras cruce el final.
+   *
+   * `cercaDelFin` lo enciende el reproductor 5 s antes del final; si el usuario
+   * retrocede se apaga y cancela el salto. `pausado` congela la cuenta para no
+   * cambiar de capitulo mientras el usuario esta en pausa. `terminado` la deja
+   * seguir despues del final, cuando el reproductor ya esta pausado por si solo.
+   */
+  const [cercaDelFin, setCercaDelFin] = useState(false);
+  const [pausado, setPausado] = useState(false);
+  const [terminado, setTerminado] = useState(false);
 
   /**
-   * El video termino. Si hay capitulo siguiente, se ofrece saltar en unos
-   * segundos; si no, no pasa nada: la pantalla se queda como estaba, que es lo
-   * correcto para una pelicula o para el ultimo capitulo.
+   * El usuario descarto el salto en este visionado.
+   *
+   * Sin esta marca, cancelar no serviria de nada cuando la cuenta ya empezo
+   * antes del final: el video terminaria cinco segundos despues y `alTerminar`
+   * volveria a ofrecer el salto. Se limpia al retroceder fuera de la zona final
+   * o al cambiar de capitulo, que es cuando el usuario vuelve a pedir el video.
+   */
+  const [cancelado, setCancelado] = useState(false);
+
+  const cancelarAutoNext = useCallback(() => {
+    setAutoNext(null);
+    setCancelado(true);
+  }, []);
+
+  const alAcercarseElFinal = useCallback(
+    (cerca: boolean) => {
+      setCercaDelFin(cerca);
+      if (!cerca) {
+        // Volvio a alejarse del final (retroceso o nuevo visionado): el video
+        // ya no esta terminado y la proxima vez podra arrancar la cuenta.
+        setTerminado(false);
+        setCancelado(false);
+        return;
+      }
+      if (terminado || cancelado) return;
+      // Los 10 s empiezan con 5 s de video por delante: al acabar aun quedan 5.
+      if (siguiente) setAutoNext((v) => v ?? AUTO_NEXT_SEC);
+    },
+    [siguiente, terminado, cancelado],
+  );
+
+  const alCambiarReproduccion = useCallback((playing: boolean) => setPausado(!playing), []);
+
+  /**
+   * Vuelve al estado inicial del seguimiento del final.
+   *
+   * Se usa al cambiar de capitulo, de fuente o de servidor: son momentos en los
+   * que la cuenta atras anterior ya no describe el video que se va a ver.
+   */
+  const reiniciarSeguimientoDelFinal = useCallback(() => {
+    setAutoNext(null);
+    setCercaDelFin(false);
+    setTerminado(false);
+    setPausado(false);
+    setCancelado(false);
+  }, []);
+
+  /**
+   * El video termino. Si hay capitulo siguiente, se ofrece saltar; si no, no
+   * pasa nada: la pantalla se queda como estaba, que es lo correcto para una
+   * pelicula o para el ultimo capitulo.
    */
   const alTerminar = useCallback(() => {
     // Dejarlo en cero evita que al reabrir la serie se reanude en el final.
     progresoRef.current = { seconds: 0, duration: progresoRef.current?.duration ?? null };
     recordHistory(card, pos, progresoRef.current);
-    if (siguiente) setAutoNext(AUTO_NEXT_SEC);
-  }, [card, pos, siguiente]);
+    if (!siguiente) return;
+    setTerminado(true);
+    // Si el usuario ya habia descartado el salto, no se le vuelve a ofrecer al
+    // acabar el video: cancelar tiene que valer hasta el proximo capitulo.
+    if (cancelado) return;
+    // Si la cuenta ya empezo 5 s antes, se conserva. Si el aviso no llego
+    // (video muy corto, salto con la barra), arranca aqui como respaldo.
+    setAutoNext((v) => v ?? AUTO_NEXT_SEC);
+  }, [card, pos, siguiente, cancelado]);
 
   // Baja la cuenta y salta al agotarse. Se reinicia si cambia el siguiente.
   useEffect(() => {
     if (autoNext === null) return;
+
+    // Retroceder fuera de la zona final cancela el salto: el usuario quiere
+    // seguir viendo, no que le cambien de capitulo.
+    if (!cercaDelFin && !terminado) {
+      setAutoNext(null);
+      return;
+    }
+
+    // Antes del final, la pausa congela la cuenta. Despues del final el
+    // reproductor esta pausado por definicion, asi que ahi no aplica.
+    if (pausado && !terminado) return;
+
     if (autoNext <= 0) {
       setAutoNext(null);
       if (siguiente) pickEpisode(siguiente);
@@ -337,12 +414,13 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
     }
     const t = setTimeout(() => setAutoNext((v) => (v === null ? null : v - 1)), 1000);
     return () => clearTimeout(t);
-  }, [autoNext, siguiente, pickEpisode]);
+  }, [autoNext, siguiente, pickEpisode, cercaDelFin, pausado, terminado]);
 
-  // Cambiar de capitulo a mano cancela cualquier salto pendiente.
+  // Cambiar de capitulo, de fuente o de servidor cancela cualquier salto
+  // pendiente y reinicia el seguimiento del final del video nuevo.
   useEffect(() => {
-    setAutoNext(null);
-  }, [posKey]);
+    reiniciarSeguimientoDelFinal();
+  }, [reiniciarSeguimientoDelFinal, entry.source, entry.id, posKey]);
 
   /*
    * Aviso de reanudacion. Se enciende cuando hay imagen y un minuto pendiente, y
@@ -390,7 +468,7 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
           setProbados([...tried]);
           setPlayback(
             fallo(
-              resumenDeFallos(data.attempts, data.sinProbar),
+              resumenDeFallos(data.attempts, data.sinProbar, data.trace),
               data.trace,
               data.attempts,
               [...tried],
@@ -460,6 +538,8 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
       const ctl = new AbortController();
       serverAbort.current = ctl;
 
+      // Otro reproductor es otro video: la cuenta del anterior no vale.
+      reiniciarSeguimientoDelFinal();
       setServerId(server.id);
       setPlayback({ phase: 'iniciando' });
       startedAt.current = performance.now();
@@ -510,7 +590,7 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
         });
       }
     },
-    [detail],
+    [detail, reiniciarSeguimientoDelFinal],
   );
 
   /**
@@ -537,7 +617,7 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
           setRecuperando(false);
           setPlayback(
             fallo(
-              resumenDeFallos(data.attempts, data.sinProbar),
+              resumenDeFallos(data.attempts, data.sinProbar, data.trace),
               data.trace,
               data.attempts,
               probados,
@@ -802,6 +882,8 @@ export function DetailView({ card, accentBySource, onBack, saved }: Props) {
               onFail={manejarFalloReproductor}
               onProgress={guardarProgreso}
               onEnded={alTerminar}
+              onEndNearChange={alAcercarseElFinal}
+              onPlayStateChange={alCambiarReproduccion}
             />
           )}
 
@@ -1122,6 +1204,8 @@ function PlayerBridge({
   onFail,
   onProgress,
   onEnded,
+  onEndNearChange,
+  onPlayStateChange,
 }: {
   state: Extract<PlaybackState, { phase: 'listo' }>;
   title: string;
@@ -1130,6 +1214,8 @@ function PlayerBridge({
   onFail(motivo: string, trace: string[], enSegundo: number): void;
   onProgress(seconds: number, duration: number | null): void;
   onEnded(): void;
+  onEndNearChange(near: boolean): void;
+  onPlayStateChange(playing: boolean): void;
 }) {
   return (
     <VideoPlayer
@@ -1140,6 +1226,8 @@ function PlayerBridge({
       onFail={onFail}
       onProgress={onProgress}
       onEnded={onEnded}
+      onEndNearChange={onEndNearChange}
+      onPlayStateChange={onPlayStateChange}
     />
   );
 }
@@ -1155,9 +1243,16 @@ function PlayerBridge({
  * Por eso el texto siempre lleva el recuento real y, si queda algo sin probar,
  * lo dice. Es peor-sounding y mas cierto, que es el orden correcto.
  */
-function resumenDeFallos(attempts: Attempt[], sinProbar: number): string {
+function resumenDeFallos(attempts: Attempt[], sinProbar: number, trace: string[] = []): string {
   const probados = attempts.length;
-  if (probados === 0) return 'No se encontró ningún servidor en esta fuente.';
+  if (probados === 0) {
+    // Cuando la fuente responde 429, decir "no hay servidores" es falso: los
+    // hay, pero no deja pedirlos. El backend deja la causa en la traza.
+    if (trace.some((linea) => /limitando las peticiones/i.test(linea))) {
+      return 'La fuente está limitando las peticiones. Espera unos segundos y vuelve a intentar.';
+    }
+    return 'No se encontró ningún servidor en esta fuente.';
+  }
 
   const plural = (x: number, s: string, p: string) => `${x} ${x === 1 ? s : p}`;
 
@@ -1208,7 +1303,7 @@ function toPlayback(
     // El helper ya tiene en cuenta `sinProbar`, asi que aqui solo hace falta
     // distinguir el caso sin ningun servidor que mirar, que es otro problema.
     const motivo = fallidos.length
-      ? resumenDeFallos(fallidos, respuesta?.sinProbar ?? 0)
+      ? resumenDeFallos(fallidos, respuesta?.sinProbar ?? 0, respuesta?.trace ?? [])
       : 'Esta fuente solo entrega un reproductor incrustado, sin una dirección de vídeo que podamos reproducir aquí.';
 
     return {

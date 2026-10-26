@@ -42,6 +42,17 @@ interface Props {
    * capitulo si la fuente los tiene, o nada si es una pelicula.
    */
   onEnded?(): void;
+  /**
+   * Entra o sale de los ultimos segundos del video.
+   *
+   * No basta con `onEnded`: la cuenta atras del siguiente capitulo tiene que
+   * empezar antes de que el video termine, para que al acabar aun queden unos
+   * segundos de margen. El padre arranca la cuenta con `true` y la cancela si el
+   * usuario retrocede y vuelve a `false`.
+   */
+  onEndNearChange?(near: boolean): void;
+  /** Play/pausa. El padre congela la cuenta atras mientras esta en pausa. */
+  onPlayStateChange?(playing: boolean): void;
 }
 
 /** URL de reproduccion, ya pasada por el proxy cuando hace falta. */
@@ -53,8 +64,20 @@ function playbackUrl(stream: PlayableStream): string {
 }
 
 const SKIP_SEC = 10;
+/** Segundos antes del final en los que se avisa para arrancar la cuenta atras. */
+const NEAR_END_SEC = 5;
 
-export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onProgress, onEnded }: Props) {
+export function VideoPlayer({
+  stream,
+  title,
+  poster,
+  reconnecting,
+  onFail,
+  onProgress,
+  onEnded,
+  onEndNearChange,
+  onPlayStateChange,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
 
@@ -68,6 +91,20 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
   /** Igual que el anterior: el aviso de fin de video vive en una ref. */
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
+
+  const onEndNearRef = useRef(onEndNearChange);
+  onEndNearRef.current = onEndNearChange;
+
+  const onPlayStateRef = useRef(onPlayStateChange);
+  onPlayStateRef.current = onPlayStateChange;
+
+  /**
+   * Ultimo estado avisado de "cerca del final".
+   *
+   * Se guarda para avisar solo al cruzar el umbral, no en cada `timeupdate`.
+   * Un `false` al retroceder tambien importa: cancela la cuenta atras.
+   */
+  const cercaDelFinal = useRef(false);
 
   /**
    * Ultimo segundo avisado al padre, para no repetir escrituras.
@@ -150,6 +187,7 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
 
     // Fuente nueva: el aviso anterior ya se consumio y hay que rearmarlo.
     reportado.current = false;
+    cercaDelFinal.current = false;
 
     video.pause();
     setPlaying(false);
@@ -281,14 +319,31 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
       fn(t, d);
     };
 
+    const revisarFin = () => {
+      const d = video.duration;
+      const t = video.currentTime;
+      const cerca = Number.isFinite(d) && d > 0 && t > 0.5 && d - t <= NEAR_END_SEC;
+      if (cerca === cercaDelFinal.current) return;
+      cercaDelFinal.current = cerca;
+      onEndNearRef.current?.(cerca);
+    };
+
     const onTime = () => {
       setCurrent(video.currentTime);
       avisarProgreso(false);
+      revisarFin();
     };
-    const onMeta = () => setDuration(Number.isFinite(video.duration) ? video.duration : 0);
-    const onPlay = () => setPlaying(true);
+    const onMeta = () => {
+      setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      revisarFin();
+    };
+    const onPlay = () => {
+      setPlaying(true);
+      onPlayStateRef.current?.(true);
+    };
     const onPause = () => {
       setPlaying(false);
+      onPlayStateRef.current?.(false);
       // La pausa es el momento natural para fijar la posicion: es justo cuando
       // el usuario deja de mirar y a menudo cuando cierra o cambia de pantalla.
       avisarProgreso(true);
@@ -296,6 +351,8 @@ export function VideoPlayer({ stream, title, poster, reconnecting, onFail, onPro
     const onEndedEvt = () => {
       // El video llego al final: se fija la posicion y se avisa al padre, que
       // decide si hay un capitulo siguiente que poner.
+      revisarFin();
+      onPlayStateRef.current?.(false);
       avisarProgreso(true);
       onEndedRef.current?.();
     };

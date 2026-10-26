@@ -1,0 +1,1082 @@
+/*
+ * Laboratorios de disposicion.
+ *
+ * Estas paginas no forman parte de la aplicacion: son una mesa de trabajo. La
+ * hoja vive aparte de `app.css` para que se pueda borrar entera cuando la
+ * disposicion este decidida, sin arrastrar estilos que la app no usa.
+ *
+ * El simulacro reutiliza las clases reales (`.apphead`, `.grid`, `.card`,
+ * `.next-up`...) y solo anade lo justo para colocarlo dentro de un marco de
+ * dispositivo.
+ */
+
+.lab {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  background: var(--bg);
+}
+
+/* ------------------------------------------------------------------ cabecera */
+
+.lab-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 20px;
+  padding: 16px 24px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.lab-eyebrow {
+  margin: 0 0 5px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.lab-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.lab-subtitle {
+  margin: 5px 0 0;
+  max-width: 76ch;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lab-top-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.lab-link {
+  padding: 6px 0;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.lab-link:hover {
+  text-decoration: underline;
+}
+
+.lab-devices {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.lab-device {
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--dim);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color 150ms ease-out, color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.lab-device:hover {
+  border-color: #3a3a44;
+  color: var(--fg);
+}
+
+.lab-device[data-active] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--fg);
+}
+
+/* -------------------------------------------------------------------- cuerpo */
+
+.lab-cuerpo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  min-height: 0;
+}
+
+.lab-escenario {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  background: radial-gradient(circle at 50% -10%, #121216, var(--bg) 62%);
+}
+
+.lab-pie {
+  margin: 0;
+  max-width: 600px;
+  color: var(--dimmer);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.lab-panel {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 60px;
+  border-left: 1px solid var(--line);
+  background: var(--raised);
+  scrollbar-color: #2a2a32 transparent;
+}
+
+/* ---------------------------------------------------------------- simulacro */
+
+.lab-frame {
+  flex: none;
+  width: min(100%, 1040px);
+  height: 620px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: 0 26px 70px -24px rgba(0, 0, 0, 0.85);
+}
+
+.lab-frame[data-device='tablet'] {
+  width: min(100%, 780px);
+}
+
+.lab-frame[data-device='mobile'] {
+  width: min(100%, 390px);
+}
+
+.lab-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.lab-shell[data-head='lateral'] {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.lab-side {
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  padding: 18px 12px;
+  border-right: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.lab-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.lab-apphead {
+  flex: none;
+  height: 54px;
+  padding: 0 20px;
+  gap: 16px;
+}
+
+.lab-marca {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+}
+
+.lab-nav {
+  margin-left: auto;
+}
+
+.lab-nav-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lab-nav-lateral .appnav-btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.lab-buscador {
+  flex: 1 1 auto;
+  max-width: 380px;
+}
+
+.lab-search-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--dim);
+}
+
+.lab-fila-buscar {
+  flex: none;
+  padding: 12px 20px 0;
+}
+
+.lab-icono-nota {
+  flex: none;
+  margin: 10px 20px 0;
+  padding: 7px 11px;
+  border-left: 2px solid var(--accent);
+  background: var(--raised);
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.lab-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 22px 26px;
+  scrollbar-color: #2a2a32 transparent;
+}
+
+.lab-seccion {
+  margin-top: 6px;
+}
+
+.lab-seccion .home-title {
+  margin-top: 18px;
+}
+
+.lab-hint-inline {
+  margin: 6px 0 16px;
+  max-width: none;
+  text-align: left;
+  font-size: 11.5px;
+}
+
+.lab-fila {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  padding: 0 0 10px;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-color: #2a2a32 transparent;
+}
+
+.lab-fila .card {
+  flex: 0 0 auto;
+}
+
+.lab-bottombar {
+  flex: none;
+}
+
+.lab-bottombar-action {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------- panel derecho */
+
+.lab-bloque {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.lab-bloque:first-child {
+  padding-top: 0;
+}
+
+.lab-bloque-title {
+  margin: 0 0 5px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.lab-bloque-note {
+  margin: 0 0 14px;
+  color: var(--dimmer);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.lab-bloque-body {
+  display: grid;
+  gap: 14px;
+}
+
+.lab-campo {
+  display: grid;
+  gap: 7px;
+}
+
+.lab-campo-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.lab-campo-hint {
+  color: var(--dimmer);
+  font-size: 11px;
+}
+
+.lab-segmentado {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lab-segmento {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--dim);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color 150ms ease-out, color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.lab-segmento:hover:not(:disabled) {
+  border-color: #3a3a44;
+  color: var(--fg);
+}
+
+.lab-segmento[data-active] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--fg);
+}
+
+.lab-segmento:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lab-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lab-slider input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.lab-slider-value {
+  min-width: 78px;
+  color: var(--dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.lab-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lab-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.lab-switch-track {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--line);
+  transition: background-color 150ms ease-out;
+}
+
+.lab-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: transform 150ms ease-out, background-color 150ms ease-out;
+}
+
+.lab-switch input:checked + .lab-switch-track {
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.lab-switch input:checked + .lab-switch-track::after {
+  transform: translateX(13px);
+  background: var(--accent);
+}
+
+.lab-switch input:focus-visible + .lab-switch-track {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- lista de bloques */
+
+.lab-bloques {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lab-bloque-seccion {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised-2);
+}
+
+.lab-bloque-seccion[data-arrastrando] {
+  border-color: var(--accent);
+  opacity: 0.55;
+}
+
+.lab-bloque-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lab-bloque-head strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.lab-grip {
+  color: var(--dimmer);
+  font-size: 15px;
+  line-height: 1;
+  cursor: grab;
+}
+
+.lab-orden {
+  display: flex;
+  gap: 4px;
+}
+
+.lab-orden button {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  color: var(--dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lab-orden button:hover:not(:disabled) {
+  border-color: #3a3a44;
+  color: var(--fg);
+}
+
+.lab-orden button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.lab-bloque-controles {
+  display: grid;
+  gap: 12px;
+}
+
+.lab-bloque-controles[data-apagado] {
+  opacity: 0.45;
+}
+
+/* ---------------------------------------------------------------- exportar */
+
+.lab-export {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.lab-export summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--fg);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.lab-export summary::marker {
+  color: var(--accent);
+}
+
+.lab-export-hint {
+  color: var(--dimmer);
+  font-size: 11px;
+}
+
+.lab-json {
+  width: 100%;
+  height: 230px;
+  margin: 10px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--dim);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.lab-export-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lab-primary {
+  padding: 7px 15px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #14100a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lab-primary:hover {
+  filter: brightness(1.08);
+}
+
+/* ====================================================================== */
+/* Simulacro de la ficha de reproduccion                                  */
+/* ====================================================================== */
+
+.lab-player {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  background: var(--bg);
+}
+
+.lab-detail-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px 0;
+}
+
+.lab-detail-source {
+  color: var(--dimmer);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lab-player-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-color: #2a2a32 transparent;
+}
+
+.lab-player-inner {
+  display: grid;
+  gap: var(--lab-gap);
+  width: 100%;
+  max-width: var(--lab-ancho);
+  margin: 0 auto;
+  padding: 10px 18px 30px;
+}
+
+.lab-player-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lab-gap);
+  align-items: start;
+}
+
+.lab-player-hero[data-poster='lateral'] {
+  grid-template-columns: 150px minmax(0, 1fr);
+}
+
+.lab-player-hero[data-poster='lateral'][data-panel='capitulos'],
+.lab-player-hero[data-poster='lateral'][data-panel='informacion'] {
+  grid-template-columns: 150px minmax(0, 1fr) 260px;
+}
+
+.lab-player-hero[data-poster='cabecera'][data-panel='capitulos'],
+.lab-player-hero[data-poster='cabecera'][data-panel='informacion'],
+.lab-player-hero[data-poster='oculto'][data-panel='capitulos'],
+.lab-player-hero[data-poster='oculto'][data-panel='informacion'] {
+  grid-template-columns: minmax(0, 1fr) 260px;
+}
+
+.lab-player-main {
+  display: grid;
+  gap: var(--lab-gap);
+  min-width: 0;
+}
+
+.lab-player-aside {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.lab-titulo-bloque {
+  display: grid;
+  gap: 5px;
+}
+
+.lab-titulo-bloque .detail-title {
+  font-size: 22px;
+}
+
+.lab-sinopsis {
+  max-width: 72ch;
+  margin: 6px 0 0;
+  color: var(--dim);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.lab-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ------------------------------------------------------------------- video */
+
+.lab-video {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: radial-gradient(circle at 50% 34%, #26262e, #09090c 72%);
+}
+
+.lab-video::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, transparent 28%, rgba(201, 162, 39, 0.07), transparent 72%);
+  pointer-events: none;
+}
+
+.lab-video-play {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding-left: 4px;
+  border-radius: 50%;
+  background: rgba(8, 8, 11, 0.72);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 19px;
+}
+
+.lab-video-controls {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px 9px;
+  background: linear-gradient(transparent, rgba(4, 4, 6, 0.86));
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.lab-video-mini {
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.lab-video-time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lab-video-track {
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.lab-video-track > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* ------------------------------------------------------------------- poster */
+
+.lab-poster {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2 / 3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(160deg, #272017, #12100d);
+}
+
+.lab-poster span {
+  color: #4a4234;
+  font-size: 44px;
+  font-weight: 300;
+}
+
+.lab-poster-cabecera {
+  display: grid;
+  place-items: end start;
+  aspect-ratio: 16 / 5;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 22% 30%, rgba(201, 162, 39, 0.12), transparent 55%),
+    linear-gradient(120deg, #241d14, #0d0c0a 72%);
+}
+
+.lab-poster-cabecera span {
+  color: rgba(201, 162, 39, 0.26);
+  font-size: 52px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* --------------------------------------------------------------- servidores */
+
+.lab-servidores {
+  display: grid;
+  gap: 8px;
+}
+
+.lab-select-servidor {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- capitulos */
+
+.lab-capitulos {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.lab-temporadas {
+  flex-wrap: wrap;
+}
+
+.lab-episodios {
+  display: grid;
+  gap: 2px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-color: #2a2a32 transparent;
+}
+
+.lab-ep {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 5px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+
+.lab-ep[data-active] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+}
+
+.lab-ep-num {
+  color: var(--dimmer);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-ep[data-active] .lab-ep-num {
+  color: var(--accent);
+}
+
+.lab-ep-nombre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-ep-dur {
+  color: var(--dimmer);
+  font-size: 10.5px;
+}
+
+.lab-select {
+  appearance: none;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+}
+
+.lab-desplegable {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.lab-desplegable summary {
+  color: var(--dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lab-desplegable[open] summary {
+  margin-bottom: 10px;
+}
+
+/* ------------------------------------------------------------------ ficha */
+
+.lab-info {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.lab-datos {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.lab-datos div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--raised-2);
+  font-size: 11.5px;
+}
+
+.lab-datos dt {
+  color: var(--dimmer);
+}
+
+.lab-datos dd {
+  margin: 0;
+  color: var(--dim);
+}
+
+/* ------------------------------------------------------------------ avisos */
+
+.lab-aviso {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.lab-aviso[data-pos='esquina'] {
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.lab-aviso[data-pos='arriba'] {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 58px;
+}
+
+.lab-aviso[data-pos='centro'] {
+  align-items: center;
+  justify-content: center;
+}
+
+.lab-aviso .next-up {
+  position: static;
+  max-width: 100%;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+.lab-frame[data-device='mobile'] .lab-apphead {
+  height: 48px;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.lab-frame[data-device='mobile'] .lab-nav {
+  gap: 0;
+}
+
+.lab-frame[data-device='mobile'] .lab-nav .appnav-btn {
+  padding: 6px 7px;
+}
+
+.lab-frame[data-device='mobile'] .lab-nav .appnav-btn span,
+.lab-frame[data-device='mobile'] .wordmark {
+  display: none;
+}
+
+.lab-frame[data-device='mobile'] .lab-fila-buscar,
+.lab-frame[data-device='mobile'] .lab-scroll {
+  padding-right: 12px;
+  padding-left: 12px;
+}
+
+.lab-frame[data-device='mobile'] .lab-icono-nota {
+  margin-right: 12px;
+  margin-left: 12px;
+}
+
+.lab-frame[data-device='mobile'] .lab-player-inner {
+  padding: 8px 10px 24px;
+}
+
+.lab-frame[data-device='mobile'] .lab-player-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.lab-frame[data-device='mobile'] .lab-player-aside {
+  padding: 10px;
+}
+
+.lab-frame[data-device='mobile'] .lab-aviso {
+  padding: 10px;
+}
+
+.lab-frame[data-device='mobile'] .lab-aviso .next-up {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+
+.lab-frame[data-device='mobile'] .lab-titulo-bloque .detail-title {
+  font-size: 19px;
+}
+
+@media (max-width: 1180px) {
+  .lab-cuerpo {
+    grid-template-columns: minmax(0, 1fr) 350px;
+  }
+}
+
+@media (max-width: 980px) {
+  .lab-cuerpo {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .lab-escenario {
+    overflow: visible;
+    padding: 18px;
+  }
+
+  .lab-panel {
+    overflow: visible;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .lab-top {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px 16px 12px;
+  }
+
+  .lab-top-actions {
+    grid-row: 2;
+  }
+
+  .lab-devices {
+    grid-row: 3;
+  }
+
+  .lab-frame {
+    height: 560px;
+  }
+}
