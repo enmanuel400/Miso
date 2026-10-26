@@ -297,6 +297,21 @@
   gap: 7px;
 }
 
+/* El buscador es una entrada más del riel, no un círculo suelto: mismo icono
+   centrado en reposo y mismo nombre que el resto al abrirse. */
+.lab-side .lab-buscar-riel {
+  flex: none;
+  margin-top: 6px;
+}
+
+.lab-side .lab-buscar-riel svg {
+  flex: none;
+}
+
+.lab-side .appnav-btn:hover {
+  background: var(--raised-2);
+}
+
 .lab-buscador {
   flex: 1 1 auto;
   max-width: 380px;

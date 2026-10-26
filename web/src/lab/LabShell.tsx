@@ -315,7 +315,7 @@ function VistaArmazon({ config, device }: { config: ArmazonDisposicion; device: 
           <aside className="lab-side">
             <Marca />
             {navVertical()}
-            {config.buscador === 'icono' && <BotonBuscar />}
+            {config.buscador === 'icono' && <BotonBuscar riel />}
           </aside>
         )}
 
@@ -333,7 +333,10 @@ function VistaArmazon({ config, device }: { config: ArmazonDisposicion; device: 
             </div>
           )}
           {config.buscador === 'icono' && (
-            <p className="lab-icono-nota">El buscador se abre desde el icono de la cabecera.</p>
+            <p className="lab-icono-nota">
+              El buscador se abre desde{' '}
+              {cabecera === 'lateral' ? 'el icono «Buscar» del riel' : 'el icono de la cabecera'}.
+            </p>
           )}
 
           <div className="lab-scroll">
@@ -404,7 +407,19 @@ function Buscador() {
   );
 }
 
-function BotonBuscar() {
+function BotonBuscar({ riel = false }: { riel?: boolean }) {
+  if (riel) {
+    return (
+      <span className="appnav-btn lab-buscar-riel" title="Buscar" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 16 16">
+          <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M11 11l3.4 3.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+        <span>Buscar</span>
+      </span>
+    );
+  }
+
   return (
     <span className="lab-search-icon" aria-hidden="true">
       <svg width="15" height="15" viewBox="0 0 16 16">
