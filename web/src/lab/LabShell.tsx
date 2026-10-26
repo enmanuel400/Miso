@@ -158,6 +158,11 @@ export function LabArmazon() {
               ]}
               onChange={(cabecera) => patch({ cabecera })}
             />
+            {config.cabecera === 'lateral' && device !== 'mobile' && (
+              <p className="lab-nota">
+                Solo iconos. Pasa el cursor por el riel para ver los nombres.
+              </p>
+            )}
             <Segmentado
               label="Buscador"
               value={config.buscador}

@@ -167,20 +167,48 @@
 }
 
 .lab-shell[data-head='lateral'] {
+  position: relative;
   display: grid;
-  grid-template-columns: 188px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
+/* La cabecera lateral vive en un riel de 56 px: solo iconos. Al pasar el cursor
+   se expande por encima del contenido, sin empujarlo, y aparecen los nombres.
+   El contenido no se recoloca porque la columna de la rejilla sigue midiendo lo
+   mismo; el riel crece hacia la derecha. */
 .lab-side {
-  grid-row: 1 / -1;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   gap: 18px;
+  width: 56px;
   min-height: 0;
-  padding: 18px 12px;
+  overflow: hidden;
+  padding: 18px 10px;
   border-right: 1px solid var(--line);
   background: var(--raised);
+  transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease-out;
+}
+
+.lab-side:hover {
+  width: 188px;
+  box-shadow: 18px 0 40px -26px rgba(0, 0, 0, 0.9);
+}
+
+.lab-shell[data-head='lateral'] .lab-content {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.lab-shell[data-head='lateral'] > .bottombar {
+  grid-row: 2;
+  grid-column: 2;
 }
 
 .lab-content {
@@ -205,6 +233,48 @@
   flex: none;
 }
 
+/* En el riel, marca y navegación arrancan centradas sobre el icono y pasan a
+   alinearse a la izquierda cuando el riel se abre. */
+.lab-side .lab-marca {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  transition: gap 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding-left 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.lab-side:hover .lab-marca {
+  justify-content: flex-start;
+  gap: 9px;
+  padding-left: 9px;
+}
+
+.lab-side .appnav-btn,
+.lab-side .wordmark,
+.lab-side .appnav-btn span {
+  transition: max-width 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease-out, gap 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.lab-side .appnav-btn span,
+.lab-side .wordmark {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.lab-side:hover .appnav-btn span {
+  max-width: 120px;
+  opacity: 1;
+}
+
+.lab-side:hover .wordmark {
+  max-width: 120px;
+  opacity: 1;
+}
+
 .lab-nav {
   margin-left: auto;
 }
@@ -215,9 +285,16 @@
   gap: 3px;
 }
 
-.lab-nav-lateral .appnav-btn {
-  justify-content: flex-start;
+.lab-side .appnav-btn {
+  justify-content: center;
+  gap: 0;
+  padding: 7px 9px;
   text-align: left;
+}
+
+.lab-side:hover .appnav-btn {
+  justify-content: flex-start;
+  gap: 7px;
 }
 
 .lab-buscador {
@@ -327,6 +404,16 @@
 .lab-bloque-body {
   display: grid;
   gap: 14px;
+}
+
+.lab-nota {
+  margin: -4px 0 0;
+  padding: 7px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--raised-2);
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.45;
 }
 
 .lab-campo {
