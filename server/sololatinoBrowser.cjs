@@ -35,7 +35,7 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
   try {
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('[data-player-token]', { timeout: 15000 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 10000));
+    await new Promise((r) => setTimeout(r, 15000));
     const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
     const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : 'i';
     await page.evaluate((src, flags) => {
@@ -44,7 +44,6 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
       const re = src ? new RegExp(src, flags || 'i') : null;
       const btns = [...doc.querySelectorAll('[data-player-token]')];
       if (btns.length === 0) return;
-      // Click only first non-premium button
       for (const b of btns) {
         const t = (b.textContent || '').toLowerCase();
         if (t.includes('principal') || t.includes('premium')) continue;
@@ -58,8 +57,37 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
       }
     }, reStr, reFlags);
     const start = Date.now();
-    while (Date.now() - start < 15000 && urls.length === 0) {
+    while (Date.now() - start < 20000 && urls.length === 0) {
       await new Promise((r) => setTimeout(r, 200));
+    }
+    // Si falla con CSRF, intentar con el token fresco
+    if (urls.length === 0) {
+      const extra = await page.evaluate(async () => {
+        const res = [];
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        const btns = [...document.querySelectorAll('[data-player-token]')];
+        for (const b of btns) {
+          const t = (b.textContent||'').toLowerCase();
+          if (t.includes('principal')||t.includes('premium')) continue;
+          const tok = b.getAttribute('data-player-token');
+          if (!tok) continue;
+          try {
+            const r = await fetch('/api/player-url', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf},
+              body: JSON.stringify({t: tok}),
+              credentials: 'include'
+            });
+            if (r.ok) {
+              const j = await r.json().catch(()=>null);
+              if (j && j.url) res.push(j.url);
+              if (res.length > 0) break;
+            }
+          } catch {}
+        }
+        return res;
+      }).catch(()=>[]);
+      for (const u of extra) if (!seen.has(u)) urls.push(u);
     }
     return urls;
   } finally {
