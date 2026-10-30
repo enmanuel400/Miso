@@ -24,11 +24,67 @@ import { fetchText, HttpError } from '../http.js';
 import { cacheGet, cacheSet, dedupe } from '../cache.js';
 import { descifrarEmbed69, esEmbed69, nombreIdioma } from './embed69.js';
 import { esVidhide, resolverVidhide } from './hosters.js';
-// @ts-ignore
-import { createRequire } from 'module';
-const _require = createRequire(import.meta.url);
-// @ts-ignore
-const { resolverConNavegador } = _require('../sololatinoBrowser.cjs');
+
+// Resolucion por navegador de /api/player-url (detras de Cloudflare). Puppeteer
+// se abstrae en la propia via: no se ancla en un modulo separado, porque esbuild
+// empaqueta el modulo server/index.ts y cualquier archivo extra se pierde en el
+// paquete linux (app.asar). El codigo inline sintoniza exactamente con el ambito
+// donde la fuente ya esta compilada.
+const puppeteerImport: any = await import('puppeteer-core');
+const puppeteer = puppeteerImport.default || puppeteerImport;
+
+const CHROME = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
+
+let browserPromise: any = null;
+async function getBrowser(): Promise<any> {
+  if (!browserPromise) {
+    browserPromise = puppeteer.launch({
+      executablePath: CHROME,
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+    });
+  }
+  return browserPromise;
+}
+
+async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promise<string[]> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+  const urls: string[] = [];
+  page.on('response', async (resp: any) => {
+    try {
+      const u = resp.url();
+      if (u.includes('/api/player-url')) {
+        const json = await resp.json().catch(() => null);
+        if (json?.url) urls.push(json.url);
+      }
+    } catch {}
+  });
+  try {
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await new Promise((r) => setTimeout(r, 25000));
+    const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
+    const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : 'i';
+    await page.evaluate((src: any, flags: any) => {
+      const doc: any = (globalThis as any).document;
+      if (!doc) return;
+      const re = src ? new RegExp(src, flags || 'i') : null;
+      const btns = [...doc.querySelectorAll('[data-player-token]')];
+      let el: any = null;
+      if (re) el = btns.find((b: any) => re.test(b.textContent || ''));
+      if (!el) el = btns.find((b: any) => /latino|vip|mixdrop|dood/i.test(b.textContent || ''));
+      if (!el) el = btns.find((b: any) => !/principal|premium/i.test(b.textContent || ''));
+      if (el && typeof el.click === 'function') el.click();
+    }, reStr, reFlags);
+    await new Promise((r) => setTimeout(r, 25000));
+    return [...new Set(urls)];
+  } finally {
+    try {
+      await page.close();
+    } catch {}
+  }
+}
 
 // ----------------------------------------------------------------------
 // Limite de peticiones del resolvedor de servidores
