@@ -37,24 +37,23 @@ function getResolver() {
     join(_here, '../sololatinoBrowser.cjs'),
     join(_here, './sololatinoBrowser.cjs'),
     join(_here, '../../sololatinoBrowser.cjs'),
+    join(_here, '../../../sololatinoBrowser.cjs'),
     '/home/demon0/Documentos/Miso/server/sololatinoBrowser.cjs',
     '/home/demon0/Documentos/Miso/dist/sololatinoBrowser.cjs',
     '/home/demon0/Documentos/Miso/dist/server/sololatinoBrowser.cjs',
+    process.resourcesPath ? join(process.resourcesPath, 'sololatinoBrowser.cjs') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar.unpacked/sololatinoBrowser.cjs') : '',
   ];
   for (const p of paths) {
+    if (!p) continue;
     try {
       return _requireSololatino(p);
     } catch {}
   }
   // último intento con require directo
-  try {
-    // @ts-ignore
-    return require('./sololatinoBrowser.cjs');
-  } catch {}
-  try {
-    // @ts-ignore
-    return require('../sololatinoBrowser.cjs');
-  } catch {}
+  try { return require('./sololatinoBrowser.cjs'); } catch {}
+  try { return require('../sololatinoBrowser.cjs'); } catch {}
+  try { return require('./resources/sololatinoBrowser.cjs'); } catch {}
   throw new Error('sololatinoBrowser.cjs not found');
 }
 const { resolverConNavegador: resolverConNavegadorCjs } = getResolver();
