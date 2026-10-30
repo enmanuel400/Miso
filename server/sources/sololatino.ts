@@ -473,6 +473,16 @@ export const sololatino: SourceAdapter = {
   },
 };
 
+async function buscarConNavegadorDirecto(domain: string, query: string): Promise<string | null> {
+  try {
+    const m: any = require('./sololatinoBrowser.cjs');
+    const res = await m.buscarConNavegador(domain, query);
+    return typeof res === 'string' ? res : null;
+  } catch {
+    return null;
+  }
+}
+
 // ----------------------------------------------------------------------
 // Busqueda (JSON del autocompletado)
 // ----------------------------------------------------------------------
@@ -735,13 +745,4 @@ function nodosJsonLd(value: unknown): NodoJsonLd[] {
   }
   return [obj];
 }
-// Fix directo para búsqueda con navegador externo
-async function buscarConNavegadorDirecto(domain: string, query: string): Promise<string | null> {
-  try {
-    const m = require('./sololatinoBrowser.cjs');
-    const res = await m.buscarConNavegador(domain, query);
-    return typeof res === 'string' ? res : null;
-  } catch {
-    return null;
-  }
-}
+

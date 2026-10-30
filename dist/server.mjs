@@ -1750,6 +1750,15 @@ var sololatino = {
     return filtradas.slice(0, limit);
   }
 };
+async function buscarConNavegadorDirecto(domain, query) {
+  try {
+    const m = __require("./sololatinoBrowser.cjs");
+    const res = await m.buscarConNavegador(domain, query);
+    return typeof res === "string" ? res : null;
+  } catch {
+    return null;
+  }
+}
 function tipoMedia(type) {
   switch (cleanText(type).toLowerCase()) {
     case "movie":
@@ -1925,15 +1934,6 @@ function nodosJsonLd(value) {
     return obj["@graph"].filter((n) => !!n && typeof n === "object");
   }
   return [obj];
-}
-async function buscarConNavegadorDirecto(domain, query) {
-  try {
-    const m = __require("./sololatinoBrowser.cjs");
-    const res = await m.buscarConNavegador(domain, query);
-    return typeof res === "string" ? res : null;
-  } catch {
-    return null;
-  }
 }
 
 // server/settings.ts
