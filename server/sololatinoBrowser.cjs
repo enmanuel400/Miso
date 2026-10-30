@@ -18,6 +18,7 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
   const urls = [];
   const seen = new Set();
   page.on('response', async (resp) => {
@@ -35,7 +36,7 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
   try {
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('[data-player-token]', { timeout: 15000 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 15000));
+    await new Promise((r) => setTimeout(r, 12000));
     const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
     const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : 'i';
     await page.evaluate((src, flags) => {
@@ -60,33 +61,39 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
     while (Date.now() - start < 20000 && urls.length === 0) {
       await new Promise((r) => setTimeout(r, 200));
     }
-    // Si falla con CSRF, intentar con el token fresco
     if (urls.length === 0) {
-      const extra = await page.evaluate(async () => {
+      const extra = await page.evaluate(async (src, flags) => {
         const res = [];
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content;
+        const re = src ? new RegExp(src, flags || 'i') : null;
         const btns = [...document.querySelectorAll('[data-player-token]')];
-        for (const b of btns) {
+        let list = btns.filter((b) => {
           const t = (b.textContent||'').toLowerCase();
-          if (t.includes('principal')||t.includes('premium')) continue;
+          if (t.includes('principal')||t.includes('premium')) return false;
+          if (re) return re.test(b.textContent||'');
+          return /fembed|latino|vip|mixdrop|dood/i.test(b.textContent||'');
+        });
+        if (list.length === 0) list = btns.filter((b) => !/(principal|premium)/i.test(b.textContent||''));
+        for (const b of list) {
           const tok = b.getAttribute('data-player-token');
           if (!tok) continue;
           try {
+            const headers = {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'};
+            if (csrf) headers['X-CSRF-TOKEN'] = csrf;
             const r = await fetch('/api/player-url', {
               method: 'POST',
-              headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf},
+              headers,
               body: JSON.stringify({t: tok}),
               credentials: 'include'
             });
             if (r.ok) {
               const j = await r.json().catch(()=>null);
-              if (j && j.url) res.push(j.url);
-              if (res.length > 0) break;
+              if (j && j.url) { res.push(j.url); break; }
             }
           } catch {}
         }
         return res;
-      }).catch(()=>[]);
+      }, reStr, reFlags).catch(()=>[]);
       for (const u of extra) if (!seen.has(u)) urls.push(u);
     }
     return urls;
@@ -95,4 +102,31 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
   }
 }
 
-module.exports = { resolverConNavegador };
+async function buscarConNavegador(domain, query) {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
+  try {
+    await page.goto(`https://${domain}/`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 8000));
+    const body = await page.evaluate(async (qq) => {
+      try {
+        const r = await fetch(`/api/search/suggest?q=${encodeURIComponent(qq)}`, {
+          method: 'GET',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json, text/plain, */*' },
+          credentials: 'include',
+        });
+        if (!r.ok) return null;
+        return await r.text();
+      } catch {
+        return null;
+      }
+    }, query);
+    return body;
+  } finally {
+    try { await page.close(); } catch {}
+  }
+}
+
+module.exports = { resolverConNavegador, buscarConNavegador };

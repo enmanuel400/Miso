@@ -27,59 +27,32 @@ import { esVidhide, resolverVidhide } from './hosters.js';
 
 // Resolucion por navegador de /api/player-url (detras de Cloudflare).
 function getResolver() {
-  try {
-    // @ts-ignore
-    const mod = require('./sololatinoBrowser.cjs');
-    return mod;
-  } catch {}
-  try {
-    // @ts-ignore
-    const mod = require('../sololatinoBrowser.cjs');
-    return mod;
-  } catch {}
-  try {
-    // @ts-ignore
-    const mod = require('../../sololatinoBrowser.cjs');
-    return mod;
-  } catch {}
-  try {
-    // @ts-ignore
-    const mod = require('./resources/sololatinoBrowser.cjs');
-    return mod;
-  } catch {}
+  try { return require('./sololatinoBrowser.cjs'); } catch {}
+  try { return require('../sololatinoBrowser.cjs'); } catch {}
+  try { return require('../../sololatinoBrowser.cjs'); } catch {}
+  try { return require('./resources/sololatinoBrowser.cjs'); } catch {}
   throw new Error('sololatinoBrowser.cjs not found');
 }
 
 async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promise<string[]> {
   try {
-    const { resolverConNavegador: resolverConNavegadorCjs } = getResolver();
-    const res = await resolverConNavegadorCjs(pageUrl, labelFiltro);
+    const m = getResolver();
+    const res = await m.resolverConNavegador(pageUrl, labelFiltro);
     return Array.isArray(res) ? res : [];
   } catch {
     return [];
   }
 }
 
-const CHROME_PATH = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
-let _browserSololatino: any = null;
-
-async function getBrowserSololatino() {
-  if (_browserSololatino) {
-    try {
-      const pages = await _browserSololatino.pages();
-      if (pages) return _browserSololatino;
-    } catch {
-      _browserSololatino = null;
+async function buscarConNavegadorExt(domain: string, query: string): Promise<string | null> {
+  try {
+    const m = getResolver();
+    if (typeof m.buscarConNavegador === 'function') {
+      const res = await m.buscarConNavegador(domain, query);
+      return typeof res === 'string' ? res : null;
     }
-  }
-  const puppeteer = await import('puppeteer-core');
-  const p = (puppeteer as any).default || puppeteer;
-  _browserSololatino = await p.launch({
-    executablePath: CHROME_PATH,
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
-  });
-  return _browserSololatino;
+  } catch {}
+  return null;
 }
 
 
@@ -215,36 +188,10 @@ export const sololatino: SourceAdapter = {
     const q = query.trim();
     if (!q) return [];
     try {
-      const browser = await getBrowserSololatino();
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      );
-      await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
-      try {
-        await page.goto(`https://${domain}/`, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => null);
-        await new Promise((r) => setTimeout(r, 4000));
-        const body = await page.evaluate(async (qq: string) => {
-          try {
-            const r = await fetch(`/api/search/suggest?q=${encodeURIComponent(qq)}`, {
-              method: 'GET',
-              headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json, text/plain, */*' },
-              credentials: 'include',
-            });
-            if (!r.ok) return null;
-            return await r.text();
-          } catch {
-            return null;
-          }
-        }, q);
-        if (body && body.trim().startsWith('[')) {
-          const res = parseSugerencias(body);
-          if (res.length > 0) return res;
-        }
-      } finally {
-        try {
-          await page.close();
-        } catch {}
+      const body = await buscarConNavegadorExt(domain, q);
+      if (body && body.trim().startsWith('[')) {
+        const res = parseSugerencias(body);
+        if (res.length > 0) return res;
       }
     } catch {}
     try {
