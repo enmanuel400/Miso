@@ -25,120 +25,46 @@ import { cacheGet, cacheSet, dedupe } from '../cache.js';
 import { descifrarEmbed69, esEmbed69, nombreIdioma } from './embed69.js';
 import { esVidhide, resolverVidhide } from './hosters.js';
 
-// Resolucion por navegador de /api/player-url (detras de Cloudflare). Puppeteer
-// se abstrae en la propia via: no se ancla en un modulo separado, porque esbuild
-// empaqueta el modulo server/index.ts y cualquier archivo extra se pierde en el
-// paquete linux (app.asar). El codigo inline sintoniza exactamente con el ambito
-// donde la fuente ya esta compilada.
-const puppeteerImport: any = await import('puppeteer-core');
-const puppeteer = puppeteerImport.default || puppeteerImport;
-
-const CHROME = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
-
-let _browserSololatino: any = null;
-
-async function getBrowserSololatino() {
-  if (_browserSololatino) {
+// Resolucion por navegador de /api/player-url (detras de Cloudflare). Usa script cjs
+// externo para evitar problemas de bundling con puppeteer-core.
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const _requireSololatino = createRequire(import.meta.url);
+const _here = dirname(fileURLToPath(import.meta.url));
+function getResolver() {
+  const paths = [
+    join(_here, '../sololatinoBrowser.cjs'),
+    join(_here, './sololatinoBrowser.cjs'),
+    join(_here, '../../sololatinoBrowser.cjs'),
+    '/home/demon0/Documentos/Miso/server/sololatinoBrowser.cjs',
+    '/home/demon0/Documentos/Miso/dist/sololatinoBrowser.cjs',
+    '/home/demon0/Documentos/Miso/dist/server/sololatinoBrowser.cjs',
+  ];
+  for (const p of paths) {
     try {
-      const pages = await _browserSololatino.pages();
-      if (pages.length >= 0) return _browserSololatino;
-    } catch {
-      _browserSololatino = null;
-    }
+      return _requireSololatino(p);
+    } catch {}
   }
-  _browserSololatino = await puppeteer.launch({
-    executablePath: CHROME,
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-features=IsolateOrigins,site-per-process',
-    ],
-  });
-  return _browserSololatino;
+  // último intento con require directo
+  try {
+    // @ts-ignore
+    return require('./sololatinoBrowser.cjs');
+  } catch {}
+  try {
+    // @ts-ignore
+    return require('../sololatinoBrowser.cjs');
+  } catch {}
+  throw new Error('sololatinoBrowser.cjs not found');
 }
+const { resolverConNavegador: resolverConNavegadorCjs } = getResolver();
 
 async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promise<string[]> {
-  const browser = await getBrowserSololatino();
-  const page = await browser.newPage();
-  await page.setUserAgent(
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  );
-  await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
-  await page.setViewport({ width: 1366, height: 768 });
-
-  const urls: string[] = [];
-  const seen = new Set<string>();
-
-  const onResp = async (resp: any) => {
-    try {
-      const u = resp.url();
-      if (!u.includes('/api/player-url')) return;
-      const json = await resp.json().catch(() => null);
-      if (json?.url && !seen.has(json.url)) {
-        seen.add(json.url);
-        urls.push(json.url);
-      }
-    } catch {}
-  };
-
-  page.on('response', onResp);
-
   try {
-    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-    await page.waitForSelector('[data-player-token]', { timeout: 8000 }).catch(() => null);
-
-    const reStr = labelFiltro?.source || null;
-    const reFlags = labelFiltro?.flags || 'i';
-
-    await page.evaluate(
-      (src: string | null, flags: string) => {
-        const doc: any = (globalThis as any).document;
-        if (!doc) return;
-        const re = src ? new RegExp(src, flags || 'i') : null;
-        const btns = [...doc.querySelectorAll('[data-player-token]')];
-        if (btns.length === 0) return;
-        const candidatos = btns.filter((b: any) => {
-          const t = (b.textContent || '').toLowerCase();
-          if (t.includes('principal') || t.includes('premium')) return false;
-          if (re) return re.test(b.textContent || '');
-          return /fembed|latino|vip|mixdrop|dood|vidhide|streamwish|voe/i.test(b.textContent || '');
-        });
-        const aClicar = candidatos.length > 0 ? candidatos : btns.filter((b: any) => !/(principal|premium)/i.test(b.textContent || ''));
-        for (let i = 0; i < Math.min(aClicar.length, 4); i++) {
-          try {
-            (aClicar[i] as HTMLElement).click();
-          } catch {}
-        }
-      },
-      reStr,
-      reFlags,
-    );
-
-    const inicio = Date.now();
-    while (Date.now() - inicio < 12000 && urls.length === 0) {
-      await new Promise((r) => setTimeout(r, 250));
-    }
-    if (urls.length === 0) {
-      const inicio2 = Date.now();
-      while (Date.now() - inicio2 < 8000) {
-        await new Promise((r) => setTimeout(r, 250));
-        if (urls.length > 0) break;
-      }
-    }
-
-    return [...new Set(urls)];
+    const res = await resolverConNavegadorCjs(pageUrl, labelFiltro);
+    return Array.isArray(res) ? res : [];
   } catch {
     return [];
-  } finally {
-    try {
-      await page.removeListener('response', onResp);
-    } catch {}
-    try {
-      await page.close();
-    } catch {}
   }
 }
 
@@ -269,6 +195,48 @@ export const sololatino: SourceAdapter = {
    */
   searchUrl(domain, query) {
     return `https://${domain}/api/search/suggest?q=${encodeURIComponent(query.trim())}`;
+  },
+
+  async search(query: string, domain: string): Promise<SearchResult[]> {
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      const browser = await getBrowserSololatino();
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      );
+      await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
+      try {
+        await page.goto(`https://${domain}/`, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+        await new Promise((r) => setTimeout(r, 8000));
+        const body = await page.evaluate(async (qq: string) => {
+          try {
+            const r = await fetch(`/api/search/suggest?q=${encodeURIComponent(qq)}`, {
+              headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json, text/plain, */*' },
+              credentials: 'include',
+            });
+            if (!r.ok) return null;
+            return await r.text();
+          } catch {
+            return null;
+          }
+        }, q);
+        if (body) return parseSugerencias(body);
+      } finally {
+        try {
+          await page.close();
+        } catch {}
+      }
+    } catch {
+      /* fallback abajo */
+    }
+    try {
+      const body = await fetchText(this.searchUrl(domain, q), { referer: `https://${domain}/` });
+      return parseSugerencias(body);
+    } catch {
+      return [];
+    }
   },
 
   parseResults(body, _domain) {
