@@ -190,15 +190,19 @@ export const sololatino: SourceAdapter = {
     try {
       const body = await buscarConNavegadorExt(domain, q);
       if (body && typeof body === 'string' && body.trim().length > 0) {
-        const res = parseSugerencias(body);
-        if (res.length > 0) return res;
+        try {
+          const res = parseSugerencias(body);
+          if (res.length > 0) return res;
+        } catch {}
       }
     } catch {}
     try {
       const body = await fetchText(this.searchUrl(domain, q), { referer: `https://${domain}/` });
       if (body && typeof body === 'string') {
-        const res = parseSugerencias(body);
-        if (res.length > 0) return res;
+        try {
+          const res = parseSugerencias(body);
+          if (res.length > 0) return res;
+        } catch {}
       }
     } catch {}
     return [];
