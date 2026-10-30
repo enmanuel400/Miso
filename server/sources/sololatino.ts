@@ -60,6 +60,28 @@ async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promi
   }
 }
 
+const CHROME_PATH = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
+let _browserSololatino: any = null;
+
+async function getBrowserSololatino() {
+  if (_browserSololatino) {
+    try {
+      const pages = await _browserSololatino.pages();
+      if (pages) return _browserSololatino;
+    } catch {
+      _browserSololatino = null;
+    }
+  }
+  const puppeteer = await import('puppeteer-core');
+  const p = (puppeteer as any).default || puppeteer;
+  _browserSololatino = await p.launch({
+    executablePath: CHROME_PATH,
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+  });
+  return _browserSololatino;
+}
+
 
 // ----------------------------------------------------------------------
 // Limite de peticiones del resolvedor de servidores
@@ -200,11 +222,12 @@ export const sololatino: SourceAdapter = {
       );
       await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
       try {
-        await page.goto(`https://${domain}/`, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-        await new Promise((r) => setTimeout(r, 8000));
+        await page.goto(`https://${domain}/`, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => null);
+        await new Promise((r) => setTimeout(r, 4000));
         const body = await page.evaluate(async (qq: string) => {
           try {
             const r = await fetch(`/api/search/suggest?q=${encodeURIComponent(qq)}`, {
+              method: 'GET',
               headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json, text/plain, */*' },
               credentials: 'include',
             });
@@ -214,21 +237,22 @@ export const sololatino: SourceAdapter = {
             return null;
           }
         }, q);
-        if (body) return parseSugerencias(body);
+        if (body && body.trim().startsWith('[')) {
+          const res = parseSugerencias(body);
+          if (res.length > 0) return res;
+        }
       } finally {
         try {
           await page.close();
         } catch {}
       }
-    } catch {
-      /* fallback abajo */
-    }
+    } catch {}
     try {
       const body = await fetchText(this.searchUrl(domain, q), { referer: `https://${domain}/` });
-      return parseSugerencias(body);
-    } catch {
-      return [];
-    }
+      const res = parseSugerencias(body);
+      if (res.length > 0) return res;
+    } catch {}
+    return [];
   },
 
   parseResults(body, _domain) {
