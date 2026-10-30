@@ -25,41 +25,34 @@ import { cacheGet, cacheSet, dedupe } from '../cache.js';
 import { descifrarEmbed69, esEmbed69, nombreIdioma } from './embed69.js';
 import { esVidhide, resolverVidhide } from './hosters.js';
 
-// Resolucion por navegador de /api/player-url (detras de Cloudflare). Usa script cjs
-// externo para evitar problemas de bundling con puppeteer-core.
-import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-const _requireSololatino = createRequire(import.meta.url);
-const _here = dirname(fileURLToPath(import.meta.url));
+// Resolucion por navegador de /api/player-url (detras de Cloudflare).
 function getResolver() {
-  const paths = [
-    join(_here, '../sololatinoBrowser.cjs'),
-    join(_here, './sololatinoBrowser.cjs'),
-    join(_here, '../../sololatinoBrowser.cjs'),
-    join(_here, '../../../sololatinoBrowser.cjs'),
-    '/home/demon0/Documentos/Miso/server/sololatinoBrowser.cjs',
-    '/home/demon0/Documentos/Miso/dist/sololatinoBrowser.cjs',
-    '/home/demon0/Documentos/Miso/dist/server/sololatinoBrowser.cjs',
-    process.resourcesPath ? join(process.resourcesPath, 'sololatinoBrowser.cjs') : '',
-    process.resourcesPath ? join(process.resourcesPath, 'app.asar.unpacked/sololatinoBrowser.cjs') : '',
-  ];
-  for (const p of paths) {
-    if (!p) continue;
-    try {
-      return _requireSololatino(p);
-    } catch {}
-  }
-  // último intento con require directo
-  try { return require('./sololatinoBrowser.cjs'); } catch {}
-  try { return require('../sololatinoBrowser.cjs'); } catch {}
-  try { return require('./resources/sololatinoBrowser.cjs'); } catch {}
+  try {
+    // @ts-ignore
+    const mod = require('./sololatinoBrowser.cjs');
+    return mod;
+  } catch {}
+  try {
+    // @ts-ignore
+    const mod = require('../sololatinoBrowser.cjs');
+    return mod;
+  } catch {}
+  try {
+    // @ts-ignore
+    const mod = require('../../sololatinoBrowser.cjs');
+    return mod;
+  } catch {}
+  try {
+    // @ts-ignore
+    const mod = require('./resources/sololatinoBrowser.cjs');
+    return mod;
+  } catch {}
   throw new Error('sololatinoBrowser.cjs not found');
 }
-const { resolverConNavegador: resolverConNavegadorCjs } = getResolver();
 
 async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promise<string[]> {
   try {
+    const { resolverConNavegador: resolverConNavegadorCjs } = getResolver();
     const res = await resolverConNavegadorCjs(pageUrl, labelFiltro);
     return Array.isArray(res) ? res : [];
   } catch {
