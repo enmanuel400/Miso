@@ -20,10 +20,15 @@ import {
   sinAnio,
   sinopsisUtil,
 } from './shared.js';
-import { fetchJson, fetchText, HttpError } from '../http.js';
+import { fetchText, HttpError } from '../http.js';
 import { cacheGet, cacheSet, dedupe } from '../cache.js';
 import { descifrarEmbed69, esEmbed69, nombreIdioma } from './embed69.js';
 import { esVidhide, resolverVidhide } from './hosters.js';
+// @ts-ignore
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+// @ts-ignore
+const { resolverConNavegador } = _require('../sololatinoBrowser.cjs');
 
 // ----------------------------------------------------------------------
 // Limite de peticiones del resolvedor de servidores
@@ -68,20 +73,39 @@ function dormir(ms: number): Promise<void> {
 async function pedirUrlDelToken(
   domain: string,
   token: string,
+  opts: { referer?: string; csrf?: string | null; cookie?: string } = {},
 ): Promise<{ url?: string; type?: string }> {
   let ultimo: unknown = null;
 
   for (let intento = 0; intento <= MAX_REINTENTOS_429; intento++) {
     await esperarTurno();
     try {
-      // Sin `Referer`: el `VerifyCsrfToken` de Laravel responde 419 cuando la
-      // peticion lo trae (medido: mismo POST, 200 sin cabecera y 419 con ella).
-      // El navegador del sitio no lo envia en este POST.
-      return await fetchJson<{ url?: string; type?: string }>(
-        `https://${domain}/api/player-url`,
-        { t: token },
-        { timeoutMs: 12_000 },
-      );
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12_000);
+      try {
+        const res = await fetch(`https://${domain}/api/player-url`, {
+          method: 'POST',
+          signal: controller.signal,
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            Accept: 'application/json, text/plain, */*',
+            'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(opts.referer ? { Referer: opts.referer } : {}),
+            ...(opts.csrf ? { 'X-CSRF-TOKEN': opts.csrf } : {}),
+            ...(opts.cookie ? { Cookie: opts.cookie } : {}),
+          },
+          body: JSON.stringify({ t: token }),
+        });
+        if (!res.ok) {
+          throw new HttpError(`HTTP ${res.status} en https://${domain}/api/player-url`, res.status, undefined);
+        }
+        return (await res.json()) as { url?: string; type?: string };
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (err) {
       ultimo = err;
       const esLimite = err instanceof HttpError && err.status === 429;
@@ -215,35 +239,58 @@ export const sololatino: SourceAdapter = {
       const yaEsta = cacheGet<PlaybackServer[]>(cacheKey);
       if (yaEsta) return yaEsta;
 
-      const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
-      const $ = cheerio.load(html);
-
-      const testigos: { label: string; token: string }[] = [];
-      $('[data-player-token]').each((_, el) => {
-        const token = cleanText($(el).attr('data-player-token'));
-        if (!token) return;
-        testigos.push({ label: cleanText($(el).text()) || 'Servidor', token });
-      });
-
-      // "⭐ Principal" apunta a player.pelisserieshoy.com, que se descarta mas
-      // abajo; pedirlo solo gastaria una de las 20 peticiones. Se prefiere
-      // LATINO (embed69) y, si no estuviera, cualquier boton que no sea premium.
-      const latinos = testigos.filter((t) => /latino/i.test(t.label));
-      const candidatos =
-        latinos.length > 0
-          ? latinos
-          : testigos.filter((t) => !/principal|premium/i.test(t.label));
-
-      const urls: string[] = [];
-      for (const t of candidatos) {
+      let urls: string[] = [];
+      try {
+        urls = await resolverConNavegador(pageUrl, /fembed/i);
+      } catch {
+        urls = [];
+      }
+      if (urls.length === 0) {
         try {
-          const data = await pedirUrlDelToken(domain, t.token);
-          if (data.url) urls.push(data.url);
-        } catch (err) {
-          // Con 429 no tiene sentido seguir: los demas botones tambien fallaran
-          // y solo alargarian el bloqueo. Se propaga para poder explicarlo.
-          if (err instanceof HttpError && err.status === 429) throw err;
-          // Un boton roto no invalida los demas.
+          urls = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
+        } catch {
+          urls = [];
+        }
+      }
+      if (urls.length === 0) {
+        try {
+          const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
+          const $ = cheerio.load(html);
+
+          const csrf =
+            $('meta[name="csrf-token"]').attr('content') ||
+            $('meta[name="X-CSRF-TOKEN"]').attr('content') ||
+            null;
+          const testigos: { label: string; token: string }[] = [];
+          $('[data-player-token]').each((_, el) => {
+            const token = cleanText($(el).attr('data-player-token'));
+            if (!token) return;
+            testigos.push({ label: cleanText($(el).text()) || 'Servidor', token });
+          });
+
+          // "⭐ Principal" apunta a player.pelisserieshoy.com (se descarta).
+          const latinos = testigos.filter((t) => /latino/i.test(t.label));
+          const fembed = testigos.filter((t) => /fembed/i.test(t.label));
+          const candidatos =
+            latinos.length > 0
+              ? latinos
+              : fembed.length > 0
+                ? fembed
+                : testigos.filter((t) => !/principal|premium/i.test(t.label));
+
+          for (const t of candidatos) {
+            try {
+              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrl, csrf });
+              if (data.url) urls.push(data.url);
+            } catch (err) {
+              // Con 429 no tiene sentido seguir: los demas botones tambien fallaran
+              // y solo alargarian el bloqueo. Se propaga para poder explicarlo.
+              if (err instanceof HttpError && err.status === 429) throw err;
+              // Un boton roto no invalida los demas.
+            }
+          }
+        } catch {
+          // Ignorar
         }
       }
 
