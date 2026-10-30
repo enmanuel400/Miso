@@ -10,7 +10,7 @@ var __commonJS = (cb, mod) => function __require2() {
 };
 
 // server/sololatinoBrowser.cjs
-var require_sololatinoBrowser = __commonJS({
+var require_sololatinoBrowser4 = __commonJS({
   "server/sololatinoBrowser.cjs"(exports, module) {
     "use strict";
     var puppeteer = __require("puppeteer-core/lib/puppeteer/puppeteer-core.js");
@@ -1435,12 +1435,21 @@ async function resolverVidhide(embedUrl) {
 
 // server/sources/sololatino.ts
 function getResolver() {
+  if (typeof require_sololatinoBrowser === "function") {
+    return require_sololatinoBrowser();
+  }
+  if (typeof require_sololatinoBrowser2 === "function") {
+    return require_sololatinoBrowser2();
+  }
+  if (typeof require_sololatinoBrowser3 === "function") {
+    return require_sololatinoBrowser3();
+  }
   try {
     return __require("./sololatinoBrowser.cjs");
   } catch {
   }
   try {
-    return require_sololatinoBrowser();
+    return require_sololatinoBrowser4();
   } catch {
   }
   try {
@@ -1461,17 +1470,6 @@ async function resolverConNavegador(pageUrl2, labelFiltro) {
   } catch {
     return [];
   }
-}
-async function buscarConNavegadorExt(domain, query) {
-  try {
-    const m = getResolver();
-    if (typeof m.buscarConNavegador === "function") {
-      const res = await m.buscarConNavegador(domain, query);
-      return typeof res === "string" ? res : null;
-    }
-  } catch {
-  }
-  return null;
 }
 var ESPACIO_ENTRE_PETICIONES_MS = 400;
 var MAX_REINTENTOS_429 = 2;
@@ -1546,7 +1544,7 @@ var sololatino = {
     const q = query.trim();
     if (!q) return [];
     try {
-      const body = await buscarConNavegadorExt(domain, q);
+      const body = await buscarConNavegadorDirecto(domain, q);
       if (body && typeof body === "string" && body.trim().length > 0) {
         try {
           const res = parseSugerencias(body);
@@ -1554,7 +1552,8 @@ var sololatino = {
         } catch {
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("Search error for", domain, "query", q, ":", err);
     }
     try {
       const body = await fetchText(this.searchUrl(domain, q), { referer: `https://${domain}/` });
@@ -1565,7 +1564,8 @@ var sololatino = {
         } catch {
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("Search error for", domain, "query", q, ":", err);
     }
     return [];
   },
@@ -1925,6 +1925,15 @@ function nodosJsonLd(value) {
     return obj["@graph"].filter((n) => !!n && typeof n === "object");
   }
   return [obj];
+}
+async function buscarConNavegadorDirecto(domain, query) {
+  try {
+    const m = __require("./sololatinoBrowser.cjs");
+    const res = await m.buscarConNavegador(domain, query);
+    return typeof res === "string" ? res : null;
+  } catch {
+    return null;
+  }
 }
 
 // server/settings.ts

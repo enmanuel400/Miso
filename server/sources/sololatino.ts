@@ -27,6 +27,17 @@ import { esVidhide, resolverVidhide } from './hosters.js';
 
 // Resolucion por navegador de /api/player-url (detras de Cloudflare).
 function getResolver() {
+  // Usar el modulo incluido por esbuild desde la variable global del bundle
+  if (typeof require_sololatinoBrowser === 'function') {
+    return require_sololatinoBrowser();
+  }
+  if (typeof require_sololatinoBrowser2 === 'function') {
+    return require_sololatinoBrowser2();
+  }
+  if (typeof require_sololatinoBrowser3 === 'function') {
+    return require_sololatinoBrowser3();
+  }
+  // fallback a require del archivo cjs (para versiones anteriores)
   try { return require('./sololatinoBrowser.cjs'); } catch {}
   try { return require('../sololatinoBrowser.cjs'); } catch {}
   try { return require('../../sololatinoBrowser.cjs'); } catch {}
@@ -188,14 +199,17 @@ export const sololatino: SourceAdapter = {
     const q = query.trim();
     if (!q) return [];
     try {
-      const body = await buscarConNavegadorExt(domain, q);
+      const body = await buscarConNavegadorDirecto(domain, q);
       if (body && typeof body === 'string' && body.trim().length > 0) {
         try {
           const res = parseSugerencias(body);
           if (res.length > 0) return res;
         } catch {}
       }
-    } catch {}
+    } catch (err) {
+      // Log the error for debugging
+      console.error('Search error for', domain, 'query', q, ':', err);
+    }
     try {
       const body = await fetchText(this.searchUrl(domain, q), { referer: `https://${domain}/` });
       if (body && typeof body === 'string') {
@@ -204,7 +218,10 @@ export const sololatino: SourceAdapter = {
           if (res.length > 0) return res;
         } catch {}
       }
-    } catch {}
+    } catch (err) {
+      // Log the error for debugging
+      console.error('Search error for', domain, 'query', q, ':', err);
+    }
     return [];
   },
 
@@ -717,4 +734,14 @@ function nodosJsonLd(value: unknown): NodoJsonLd[] {
     return obj['@graph'].filter((n): n is NodoJsonLd => !!n && typeof n === 'object');
   }
   return [obj];
+}
+// Fix directo para búsqueda con navegador externo
+async function buscarConNavegadorDirecto(domain: string, query: string): Promise<string | null> {
+  try {
+    const m = require('./sololatinoBrowser.cjs');
+    const res = await m.buscarConNavegador(domain, query);
+    return typeof res === 'string' ? res : null;
+  } catch {
+    return null;
+  }
 }
