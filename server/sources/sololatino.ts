@@ -298,7 +298,7 @@ export const sololatino: SourceAdapter = {
    * navegador solo gastaria presupuesto para fallar.
    */
   async fetchServers(domain, id, pos) {
-    const pageUrl = this.playUrl(domain, id, pos ?? null);
+    const pageUrlBase = this.playUrl(domain, id, pos ?? null);
     const cacheKey =
       `sololatino:servers:${domain}:${id}:${pos?.season ?? 'x'}:${pos?.episode ?? 'x'}`;
 
@@ -313,10 +313,28 @@ export const sololatino: SourceAdapter = {
       if (yaEsta) return yaEsta;
 
       let urls: string[] = [];
-      try {
-        urls = await resolverConNavegador(pageUrl, /fembed/i);
-      } catch {
-        urls = [];
+      const candidatosUrl: string[] = [];
+      candidatosUrl.push(pageUrlBase);
+      if (id.includes('sobrenatural')) {
+        candidatosUrl.push(this.playUrl(domain, id.replace('sobrenatural', 'supernatural'), pos ?? null));
+      }
+      if (id.includes('supernatural')) {
+        candidatosUrl.push(this.playUrl(domain, id.replace('supernatural', 'sobrenatural'), pos ?? null));
+      }
+
+      for (const pageUrl of candidatosUrl) {
+        try {
+          urls = await resolverConNavegador(pageUrl, /fembed/i);
+        } catch {
+          urls = [];
+        }
+        if (urls.length > 0) break;
+        try {
+          urls = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
+        } catch {
+          urls = [];
+        }
+        if (urls.length > 0) break;
       }
       if (urls.length === 0) {
         try {
