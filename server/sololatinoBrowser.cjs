@@ -1,10 +1,9 @@
-const puppeteer = require('puppeteer-core/lib/puppeteer/puppeteer-core.js');
-
 const CHROME = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
 let browserPromise = null;
 
 async function getBrowser() {
   if (!browserPromise) {
+    const puppeteer = require('puppeteer-core/lib/puppeteer/puppeteer-core.js');
     browserPromise = puppeteer.launch({
       executablePath: CHROME,
       headless: true,
