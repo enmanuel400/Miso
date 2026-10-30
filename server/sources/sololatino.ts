@@ -35,56 +35,113 @@ const puppeteer = puppeteerImport.default || puppeteerImport;
 
 const CHROME = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
 
-let browserPromise: any = null;
-async function getBrowser(): Promise<any> {
-  if (!browserPromise) {
-    browserPromise = puppeteer.launch({
-      executablePath: CHROME,
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
-    });
+let _browserSololatino: any = null;
+
+async function getBrowserSololatino() {
+  if (_browserSololatino) {
+    try {
+      const pages = await _browserSololatino.pages();
+      if (pages.length >= 0) return _browserSololatino;
+    } catch {
+      _browserSololatino = null;
+    }
   }
-  return browserPromise;
+  _browserSololatino = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+    ],
+  });
+  return _browserSololatino;
 }
 
 async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promise<string[]> {
-  const browser = await getBrowser();
+  const browser = await getBrowserSololatino();
   const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+  await page.setUserAgent(
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  );
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
+  await page.setViewport({ width: 1366, height: 768 });
+
   const urls: string[] = [];
-  page.on('response', async (resp: any) => {
+  const seen = new Set<string>();
+
+  const onResp = async (resp: any) => {
     try {
       const u = resp.url();
-      if (u.includes('/api/player-url')) {
-        const json = await resp.json().catch(() => null);
-        if (json?.url) urls.push(json.url);
+      if (!u.includes('/api/player-url')) return;
+      const json = await resp.json().catch(() => null);
+      if (json?.url && !seen.has(json.url)) {
+        seen.add(json.url);
+        urls.push(json.url);
       }
     } catch {}
-  });
+  };
+
+  page.on('response', onResp);
+
   try {
-    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
-    await new Promise((r) => setTimeout(r, 25000));
-    const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
-    const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : 'i';
-    await page.evaluate((src: any, flags: any) => {
-      const doc: any = (globalThis as any).document;
-      if (!doc) return;
-      const re = src ? new RegExp(src, flags || 'i') : null;
-      const btns = [...doc.querySelectorAll('[data-player-token]')];
-      let el: any = null;
-      if (re) el = btns.find((b: any) => re.test(b.textContent || ''));
-      if (!el) el = btns.find((b: any) => /latino|vip|mixdrop|dood/i.test(b.textContent || ''));
-      if (!el) el = btns.find((b: any) => !/principal|premium/i.test(b.textContent || ''));
-      if (el && typeof el.click === 'function') el.click();
-    }, reStr, reFlags);
-    await new Promise((r) => setTimeout(r, 25000));
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+    await page.waitForSelector('[data-player-token]', { timeout: 8000 }).catch(() => null);
+
+    const reStr = labelFiltro?.source || null;
+    const reFlags = labelFiltro?.flags || 'i';
+
+    await page.evaluate(
+      (src: string | null, flags: string) => {
+        const doc: any = (globalThis as any).document;
+        if (!doc) return;
+        const re = src ? new RegExp(src, flags || 'i') : null;
+        const btns = [...doc.querySelectorAll('[data-player-token]')];
+        if (btns.length === 0) return;
+        const candidatos = btns.filter((b: any) => {
+          const t = (b.textContent || '').toLowerCase();
+          if (t.includes('principal') || t.includes('premium')) return false;
+          if (re) return re.test(b.textContent || '');
+          return /fembed|latino|vip|mixdrop|dood|vidhide|streamwish|voe/i.test(b.textContent || '');
+        });
+        const aClicar = candidatos.length > 0 ? candidatos : btns.filter((b: any) => !/(principal|premium)/i.test(b.textContent || ''));
+        for (let i = 0; i < Math.min(aClicar.length, 4); i++) {
+          try {
+            (aClicar[i] as HTMLElement).click();
+          } catch {}
+        }
+      },
+      reStr,
+      reFlags,
+    );
+
+    const inicio = Date.now();
+    while (Date.now() - inicio < 12000 && urls.length === 0) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (urls.length === 0) {
+      const inicio2 = Date.now();
+      while (Date.now() - inicio2 < 8000) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (urls.length > 0) break;
+      }
+    }
+
     return [...new Set(urls)];
+  } catch {
+    return [];
   } finally {
+    try {
+      await page.removeListener('response', onResp);
+    } catch {}
     try {
       await page.close();
     } catch {}
   }
 }
+
 
 // ----------------------------------------------------------------------
 // Limite de peticiones del resolvedor de servidores
