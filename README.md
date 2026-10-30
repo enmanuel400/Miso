@@ -76,7 +76,7 @@ Node local y lo apaga cuando la aplicación se cierra.
 | PelisPlusHD | `pelisplushd` | HTML + navegador (URL calculada en JS ofuscado) |
 | Cuevana3 | `cuevana3` | API `/wp-api/v1` |
 | LaMovie | `lamovie` | API `/wp-api/v1` |
-| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) |
+| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) — **en reparación, no funciona de manera adecuada por el momento** |
 
 > Las fuentes **rotan de dominio con frecuencia**. Miso resuelve en tiempo de
 > ejecución cuál de sus dominios conocidos está vivo, así que el dominio real no
