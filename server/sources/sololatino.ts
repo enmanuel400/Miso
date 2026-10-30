@@ -193,6 +193,11 @@ export const sololatino: SourceAdapter = {
         const res = parseSugerencias(body);
         if (res.length > 0) return res;
       }
+      // Si devuelve algo que no es array, intentar parsear igual
+      if (body && body.trim().length > 0) {
+        const res = parseSugerencias(body);
+        if (res.length > 0) return res;
+      }
     } catch {}
     try {
       const body = await fetchText(this.searchUrl(domain, q), { referer: `https://${domain}/` });
