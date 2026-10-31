@@ -1936,6 +1936,209 @@ function nodosJsonLd(value) {
   return [obj];
 }
 
+// server/sources/pelispedia.ts
+import * as cheerio3 from "cheerio";
+function absoluteUrl(href, domain) {
+  const t = cleanText(href);
+  if (!t) return null;
+  if (/^https?:\/\//i.test(t)) return t;
+  return t.startsWith("/") ? `https://${domain}${t}` : `https://${domain}/${t}`;
+}
+function getKindFromUrl(id) {
+  if (id.startsWith("serie/")) return "series";
+  if (id.startsWith("pelicula/")) return "movie";
+  return null;
+}
+var pelispedia = {
+  meta: {
+    id: "pelispedia",
+    label: "Pelispedia",
+    accent: "#1caddd"
+  },
+  domains: ["pelispedia.mov"],
+  searchUrl(domain, query) {
+    return `https://${domain}/?s=${encodeURIComponent(query.trim())}`;
+  },
+  parseResults(html, domain) {
+    const $ = cheerio3.load(html);
+    const out = [];
+    $('a[href*="/pelicula/"], a[href*="/serie/"]').each((_, el) => {
+      const $a = $(el);
+      const href = cleanText($a.attr("href"));
+      if (!href) return;
+      const absolute = absoluteUrl(href, domain);
+      if (!absolute) return;
+      let slug = absolute.replace(/^https?:\/\/[^/]+/, "").replace(/^\/|\/$/g, "");
+      if (!slug || !(slug.startsWith("pelicula/") || slug.startsWith("serie/"))) return;
+      if (slug.includes("#")) return;
+      const title = cleanText($a.find(".title, .card-title, h3, h4").first().text()) || cleanText($a.attr("title")) || cleanText($a.find("img").first().attr("alt")) || slug.split("/").pop()?.replace(/-/g, " ") || "";
+      if (!title || isJunkTitle(title)) return;
+      const img = $a.find("img").first();
+      let poster = img.attr("data-src") ?? img.attr("src") ?? img.attr("data-lazy-src") ?? null;
+      if (poster && poster.startsWith("/")) poster = `https://${domain}${poster}`;
+      const kind = getKindFromUrl(slug);
+      out.push({
+        id: slug,
+        source: "pelispedia",
+        sourceLabel: "Pelispedia",
+        title,
+        url: absolute,
+        poster: isMissingPoster(poster) ? null : poster,
+        kind,
+        year: extractYear(title) ?? null,
+        rating: null,
+        episode: null,
+        note: null
+      });
+    });
+    return dedupeResults(out);
+  },
+  playUrl(domain, id, pos) {
+    if (pos && id.startsWith("serie/")) {
+      return `https://${domain}/${id}#s${pos.season}-e${pos.episode}`;
+    }
+    return `https://${domain}/${id}`;
+  },
+  parseDetail(html, domain, id) {
+    const $ = cheerio3.load(html);
+    const title = cleanText($("h1").first().text()) || cleanText($('meta[property="og:title"]').attr("content")) || id.split("/").pop()?.replace(/-/g, " ") || id;
+    let poster = $('meta[property="og:image"]').attr("content") || $("img.poster, .cover img").first().attr("src") || $("img").first().attr("src") || null;
+    if (poster && poster.startsWith("/")) poster = `https://${domain}${poster}`;
+    const synopsis = sinopsisUtil($('meta[property="og:description"]').attr("content")) || sinopsisUtil($('meta[name="description"]').attr("content")) || sinopsisUtil($(".description, .sinopsis, .plot").first().text());
+    const seasons = [];
+    const episodesMap = /* @__PURE__ */ new Map();
+    if (id.startsWith("serie/")) {
+      $("button[data-season-toggle]").each((_, el) => {
+        const seasonIndex = Number($(el).attr("data-season-index"));
+        if (!Number.isFinite(seasonIndex)) return;
+        const seasonNum = seasonIndex + 1;
+        if (!seasons.find((s) => s.season === seasonNum)) {
+          seasons.push({
+            season: seasonNum,
+            name: `Temporada ${seasonNum}`,
+            first: 1,
+            last: 0,
+            poster: null
+          });
+        }
+        $(`#season-${seasonIndex} a[data-season][data-episode]`).each((__, a) => {
+          const epSeason = Number($(a).attr("data-season"));
+          const epNum = Number($(a).attr("data-episode"));
+          if (!Number.isFinite(epSeason) || !Number.isFinite(epNum)) return;
+          const lista = episodesMap.get(epSeason) ?? [];
+          lista.push({
+            season: epSeason,
+            episode: epNum,
+            title: `Cap\xEDtulo ${epNum}`,
+            airDate: null,
+            runtime: null,
+            available: true
+          });
+          episodesMap.set(epSeason, lista);
+        });
+      });
+      for (const [s, list] of episodesMap) {
+        list.sort((a, b) => a.episode - b.episode);
+        const seasonInfo = seasons.find((x) => x.season === s);
+        if (seasonInfo) {
+          seasonInfo.first = list[0]?.episode ?? 1;
+          seasonInfo.last = list[list.length - 1]?.episode ?? 0;
+        }
+      }
+      seasons.sort((a, b) => a.season - b.season);
+    }
+    const porDefecto = primerCapitulo(seasons);
+    const capitulos = porDefecto ? episodesMap.get(porDefecto.season) ?? [] : [];
+    return {
+      source: "pelispedia",
+      id,
+      title,
+      url: `https://${domain}/${id}`,
+      poster: isMissingPoster(poster) ? null : poster,
+      synopsis,
+      year: extractYear(title) ?? null,
+      kind: getKindFromUrl(id),
+      servers: [],
+      episodes: id.startsWith("serie/") && seasons.length > 0 ? indiceDeSerie(seasons, capitulos, porDefecto) : null
+    };
+  },
+  async fetchServers(domain, id, pos) {
+    const pageUrl2 = this.playUrl(domain, id, pos ?? null);
+    let html = await fetchText(pageUrl2, { referer: `https://${domain}/` });
+    const $ = cheerio3.load(html);
+    let vidUrl = null;
+    $("iframe").each((_, el) => {
+      const src = $(el).attr("src") || "";
+      if (src.includes("/vidurl/")) {
+        vidUrl = src.startsWith("http") ? src : `https://${domain}${src}`;
+      }
+    });
+    if (!vidUrl) {
+      const match = html.match(/\/vidurl\/[^"']+/);
+      if (match) {
+        vidUrl = match[0].startsWith("http") ? match[0] : `https://${domain}${match[0]}`;
+      }
+    }
+    if (!vidUrl) return [];
+    try {
+      const vidHtml = await fetchText(vidUrl, { referer: pageUrl2 });
+      const $2 = cheerio3.load(vidHtml);
+      const match = vidHtml.match(/let dataLink = (\[.*?\]);/s);
+      if (match) {
+        try {
+          return [{
+            id: "pelispedia-1",
+            label: "Reproductor",
+            embedUrl: vidUrl,
+            method: "dom"
+          }];
+        } catch {
+        }
+      }
+    } catch {
+    }
+    return [{
+      id: "pelispedia-1",
+      label: "Reproductor",
+      embedUrl: vidUrl,
+      method: "dom"
+    }];
+  },
+  async fetchEpisodes(domain, id, season) {
+    if (!id.startsWith("serie/")) return [];
+    const html = await fetchText(`https://${domain}/${id}`, { referer: `https://${domain}/` });
+    const $ = cheerio3.load(html);
+    const episodes = [];
+    const seasonIndex = season - 1;
+    $(`#season-${seasonIndex} a[data-season][data-episode]`).each((_, a) => {
+      const epSeason = Number($(a).attr("data-season"));
+      const epNum = Number($(a).attr("data-episode"));
+      if (!Number.isFinite(epSeason) || !Number.isFinite(epNum)) return;
+      if (epSeason !== season) return;
+      episodes.push({
+        season: epSeason,
+        episode: epNum,
+        title: `Cap\xEDtulo ${epNum}`,
+        airDate: null,
+        runtime: null,
+        available: true
+      });
+    });
+    episodes.sort((a, b) => a.episode - b.episode);
+    return episodes;
+  },
+  async fetchHome(domain, limit) {
+    const html = await fetchText(`https://${domain}/`, { timeoutMs: 15e3 }).catch(() => "");
+    const results = this.parseResults(html, domain).slice(0, limit);
+    return results;
+  },
+  async fetchByGenre(domain, genre) {
+    const url = `https://${domain}/peliculas?genero=${encodeURIComponent(genre.slug)}`;
+    const html = await fetchText(url, { referer: `https://${domain}/`, timeoutMs: 15e3 }).catch(() => "");
+    return this.parseResults(html, domain);
+  }
+};
+
 // server/settings.ts
 import { existsSync as existsSync2, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path2 from "node:path";
@@ -1945,7 +2148,7 @@ var ultimoError = null;
 function empty() {
   return { version: 1, disabledSources: [] };
 }
-function load3() {
+function load4() {
   if (cache) return cache;
   try {
     if (existsSync2(FILE)) {
@@ -1979,16 +2182,16 @@ function settingsStatus() {
   return { file: FILE, error: ultimoError };
 }
 function isSourceEnabled(id) {
-  return !load3().disabledSources.includes(id);
+  return !load4().disabledSources.includes(id);
 }
 function setSourceEnabled(id, enabled) {
-  const actual = load3();
+  const actual = load4();
   const sinEsta = actual.disabledSources.filter((otro) => otro !== id);
   save({ ...actual, disabledSources: enabled ? sinEsta : [...sinEsta, id] });
 }
 
 // server/sources/index.ts
-var SOURCES = [pelisplushd, cuevana3gs, lamovie, sololatino];
+var SOURCES = [pelisplushd, cuevana3gs, lamovie, sololatino, pelispedia];
 var SOURCE_MAP = new Map(SOURCES.map((s) => [s.meta.id, s]));
 function getSource(id) {
   return SOURCE_MAP.get(id);
@@ -2947,7 +3150,7 @@ async function resolveStream(embedUrl, opts = {}) {
   const fin = Date.now() + budgetMs;
   const restante = () => Math.max(800, fin - Date.now());
   if (deadHops.has(embedUrl)) {
-    onTrace?.(`saltos ya conocido como muerto: ${hostOf2(embedUrl)}`);
+    onTrace?.(`saltos ya conocido como muerto: ${hostOf3(embedUrl)}`);
     return null;
   }
   if (classifyStream(embedUrl) === "embed") {
@@ -2993,7 +3196,7 @@ async function resolveStream(embedUrl, opts = {}) {
   }
   const nested = extraction.candidates.find((c) => c.method === "dom-iframe" && !isNoiseHost(c.embedUrl));
   if (nested && nested.embedUrl !== embedUrl && !visited.has(nested.embedUrl)) {
-    const destino = hostOf2(nested.embedUrl);
+    const destino = hostOf3(nested.embedUrl);
     onTrace?.(`siguiendo el iframe a ${destino}`);
     visited.add(nested.embedUrl);
     const developed = await resolveStream(nested.embedUrl, {
@@ -3018,7 +3221,7 @@ async function resolveStream(embedUrl, opts = {}) {
     false
   );
 }
-function hostOf2(url) {
+function hostOf3(url) {
   try {
     return new URL(url).hostname;
   } catch {
@@ -3491,7 +3694,7 @@ var ultimoError2 = null;
 function empty2() {
   return { version: 1, history: [], favorites: [] };
 }
-function load4() {
+function load5() {
   if (cache2) return cache2;
   try {
     if (existsSync3(FILE3)) {
@@ -3573,23 +3776,23 @@ function sanitizeWatched(input) {
   return Object.fromEntries(entradas);
 }
 function readLibrary() {
-  const lib = load4();
+  const lib = load5();
   return { history: lib.history, favorites: lib.favorites };
 }
 function recordHistory(entry) {
-  const lib = load4();
+  const lib = load5();
   const history = [entry, ...lib.history.filter((e) => e.key !== entry.key)].slice(0, MAX_HISTORY);
   save2({ ...lib, history });
   return history;
 }
 function forgetHistory(key) {
-  const lib = load4();
+  const lib = load5();
   const history = key ? lib.history.filter((e) => e.key !== key) : [];
   save2({ ...lib, history });
   return history;
 }
 function toggleFavorite(entry) {
-  const lib = load4();
+  const lib = load5();
   const yaEsta = lib.favorites.some((e) => e.key === entry.key);
   const favorites = yaEsta ? lib.favorites.filter((e) => e.key !== entry.key) : [entry, ...lib.favorites];
   save2({ ...lib, favorites });

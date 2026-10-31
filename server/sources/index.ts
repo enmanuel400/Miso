@@ -4,6 +4,7 @@ import { pelisplushd } from './pelisplushd.js';
 import { cuevana3gs } from './cuevana3gs.js';
 import { lamovie } from './lamovie.js';
 import { sololatino } from './sololatino.js';
+import { pelispedia } from './pelispedia.js';
 import { fetchText } from '../http.js';
 import { cacheGet, cacheSet } from '../cache.js';
 import { isSourceEnabled } from '../settings.js';
@@ -60,7 +61,7 @@ import { isSourceEnabled } from '../settings.js';
  * de embed69 antes de devolver la lista, de modo que el extractor arranca en el
  * hoster final (voe, streamwish, vidhide) y no en la pagina del player.
  */
-export const SOURCES: SourceAdapter[] = [pelisplushd, cuevana3gs, lamovie, sololatino];
+export const SOURCES: SourceAdapter[] = [pelisplushd, cuevana3gs, lamovie, sololatino, pelispedia];
 
 export const SOURCE_MAP = new Map(SOURCES.map((s) => [s.meta.id, s]));
 
