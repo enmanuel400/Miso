@@ -1,36 +1,116 @@
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
-var __commonJS = (cb, mod) => function __require2() {
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
 // server/sololatinoBrowser.cjs
-var require_sololatinoBrowser4 = __commonJS({
+var require_sololatinoBrowser = __commonJS({
   "server/sololatinoBrowser.cjs"(exports, module) {
     "use strict";
-    var puppeteer = __require("puppeteer-core/lib/puppeteer/puppeteer-core.js");
     var CHROME = "/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
     var browserPromise2 = null;
+    var puppeteerModule = null;
+    var pageActual = null;
+    var fallosConsecutivos = 0;
+    var MAX_FALLOS_ANTES_RECREAR = 3;
+    function getChromeArgs() {
+      return ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"];
+    }
+    async function closeBrowser2() {
+      if (pageActual) {
+        try {
+          await pageActual.close();
+        } catch {
+        }
+        pageActual = null;
+      }
+      if (browserPromise2) {
+        try {
+          const browser = await browserPromise2;
+          await browser.close();
+        } catch {
+        }
+      }
+      browserPromise2 = null;
+      fallosConsecutivos = 0;
+    }
+    async function cerrarSesion() {
+      if (pageActual) {
+        try {
+          await pageActual.close();
+        } catch {
+        }
+        pageActual = null;
+      }
+      browserPromise2 = null;
+    }
     async function getBrowser2() {
+      if (!puppeteerModule) {
+        puppeteerModule = await import("puppeteer-core/lib/puppeteer/puppeteer-core.js");
+      }
+      const puppeteer = puppeteerModule.default ?? puppeteerModule;
       if (!browserPromise2) {
         browserPromise2 = puppeteer.launch({
           executablePath: CHROME,
           headless: true,
-          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
+          args: getChromeArgs()
         });
       }
       return browserPromise2;
     }
-    async function resolverConNavegador2(pageUrl2, labelFiltro) {
+    async function getPage() {
       const browser = await getBrowser2();
-      const page = await browser.newPage();
-      await page.setUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-      await page.setExtraHTTPHeaders({ "Accept-Language": "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7" });
+      if (!pageActual || pageActual.isClosed()) {
+        pageActual = await browser.newPage();
+        await pageActual.setUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        await pageActual.setExtraHTTPHeaders({ "Accept-Language": "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7" });
+      }
+      return pageActual;
+    }
+    function registrarExito() {
+      fallosConsecutivos = 0;
+    }
+    function registrarFallo() {
+      fallosConsecutivos += 1;
+      if (fallosConsecutivos >= MAX_FALLOS_ANTES_RECREAR) {
+        closeBrowser2();
+      }
+      return fallosConsecutivos;
+    }
+    function esPaginaBloqueada(url, status, body) {
+      if (/cloudflare/i.test(url)) return true;
+      if (/challenge|captcha|verify-you-are-human|just-a-moment/i.test(body || "")) return true;
+      return false;
+    }
+    async function resolverConNavegador2(pageUrl, labelFiltro) {
+      let page;
+      try {
+        page = await getPage();
+      } catch {
+        registrarFallo();
+        return [];
+      }
       const urls = [];
       const seen = /* @__PURE__ */ new Set();
       page.on("response", async (resp) => {
@@ -46,41 +126,68 @@ var require_sololatinoBrowser4 = __commonJS({
         } catch {
         }
       });
+      let bloqueado = false;
+      page.on("response", async (resp) => {
+        try {
+          const u = resp.url();
+          const txt = await resp.text().catch(() => "");
+          if (esPaginaBloqueada(u, resp.status(), txt)) {
+            bloqueado = true;
+          }
+        } catch {
+        }
+      });
       try {
-        await page.goto(pageUrl2, { waitUntil: "domcontentloaded", timeout: 6e4 });
-        await page.waitForSelector("[data-player-token]", { timeout: 15e3 }).catch(() => {
+        try {
+          await Promise.race([
+            page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 1e4 }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("goto timeout")), 12e3))
+          ]);
+        } catch {
+          try {
+            await page.close();
+          } catch {
+          }
+          pageActual = null;
+          registrarFallo();
+          return [];
+        }
+        await page.waitForSelector("[data-player-token]", { timeout: 5e3 }).catch(() => {
         });
-        await new Promise((r) => setTimeout(r, 12e3));
+        await new Promise((r) => setTimeout(r, 3e3));
         const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
         const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : "i";
-        await page.evaluate((src, flags) => {
-          const doc = globalThis.document;
-          if (!doc) return;
-          const re = src ? new RegExp(src, flags || "i") : null;
-          const btns = [...doc.querySelectorAll("[data-player-token]")];
-          if (btns.length === 0) return;
-          for (const b of btns) {
-            const t = (b.textContent || "").toLowerCase();
-            if (t.includes("principal") || t.includes("premium")) continue;
-            if (re && !re.test(b.textContent || "")) continue;
-            try {
-              b.click();
-              return;
-            } catch {
+        try {
+          await page.evaluate((src, flags) => {
+            const doc = globalThis.document;
+            if (!doc) return;
+            const re = src ? new RegExp(src, flags || "i") : null;
+            const btns = [...doc.querySelectorAll("[data-player-token]")];
+            if (btns.length === 0) return;
+            for (const b of btns) {
+              const t = (b.textContent || "").toLowerCase();
+              if (t.includes("principal") || t.includes("premium")) continue;
+              if (re && !re.test(b.textContent || "")) continue;
+              try {
+                b.click();
+                return;
+              } catch {
+              }
             }
-          }
-          for (const b of btns) {
-            const t = (b.textContent || "").toLowerCase();
-            if (t.includes("principal") || t.includes("premium")) continue;
-            try {
-              b.click();
-              return;
-            } catch {
+            for (const b of btns) {
+              const t = (b.textContent || "").toLowerCase();
+              if (t.includes("principal") || t.includes("premium")) continue;
+              try {
+                b.click();
+                return;
+              } catch {
+              }
             }
-          }
-        }, reStr, reFlags);
+          }, reStr, reFlags);
+        } catch {
+        }
         const start = Date.now();
-        while (Date.now() - start < 2e4 && urls.length === 0) {
+        while (Date.now() - start < 5e3 && urls.length === 0) {
           await new Promise((r) => setTimeout(r, 200));
         }
         if (urls.length === 0) {
@@ -122,22 +229,33 @@ var require_sololatinoBrowser4 = __commonJS({
           }, reStr, reFlags).catch(() => []);
           for (const u of extra) if (!seen.has(u)) urls.push(u);
         }
+        if (bloqueado || urls.length === 0) {
+          registrarFallo();
+          if (bloqueado) {
+            try {
+              await page.close();
+            } catch {
+            }
+            pageActual = null;
+          }
+        } else {
+          registrarExito();
+        }
         return urls;
       } finally {
-        try {
-          await page.close();
-        } catch {
-        }
       }
     }
     async function buscarConNavegador(domain, query) {
-      const browser = await getBrowser2();
-      const page = await browser.newPage();
-      await page.setUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-      await page.setExtraHTTPHeaders({ "Accept-Language": "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7" });
+      let page;
       try {
-        await page.goto(`https://${domain}/`, { waitUntil: "domcontentloaded", timeout: 3e4 }).catch(() => null);
-        await new Promise((r) => setTimeout(r, 8e3));
+        page = await getPage();
+      } catch {
+        registrarFallo();
+        return null;
+      }
+      try {
+        await page.goto(`https://${domain}/`, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => null);
+        await new Promise((r) => setTimeout(r, 3e3));
         const body = await page.evaluate(async (qq) => {
           try {
             const r = await fetch(`/api/search/suggest?q=${encodeURIComponent(qq)}`, {
@@ -151,15 +269,14 @@ var require_sololatinoBrowser4 = __commonJS({
             return null;
           }
         }, query);
+        registrarExito();
         return body;
-      } finally {
-        try {
-          await page.close();
-        } catch {
-        }
+      } catch (err) {
+        registrarFallo();
+        return null;
       }
     }
-    module.exports = { resolverConNavegador: resolverConNavegador2, buscarConNavegador };
+    module.exports = { resolverConNavegador: resolverConNavegador2, buscarConNavegador, cerrarSesion };
   }
 });
 
@@ -1434,48 +1551,30 @@ async function resolverVidhide(embedUrl) {
 }
 
 // server/sources/sololatino.ts
-function getResolver() {
-  if (typeof require_sololatinoBrowser === "function") {
-    return require_sololatinoBrowser();
-  }
-  if (typeof require_sololatinoBrowser2 === "function") {
-    return require_sololatinoBrowser2();
-  }
-  if (typeof require_sololatinoBrowser3 === "function") {
-    return require_sololatinoBrowser3();
-  }
+var import_sololatinoBrowser = __toESM(require_sololatinoBrowser(), 1);
+async function resolverConNavegador(pageUrl, labelFiltro) {
   try {
-    return __require("./sololatinoBrowser.cjs");
-  } catch {
-  }
-  try {
-    return require_sololatinoBrowser4();
-  } catch {
-  }
-  try {
-    return __require("../../sololatinoBrowser.cjs");
-  } catch {
-  }
-  try {
-    return __require("./resources/sololatinoBrowser.cjs");
-  } catch {
-  }
-  throw new Error("sololatinoBrowser.cjs not found");
-}
-async function resolverConNavegador(pageUrl2, labelFiltro) {
-  try {
-    const m = getResolver();
-    const res = await m.resolverConNavegador(pageUrl2, labelFiltro);
+    const res = await (0, import_sololatinoBrowser.resolverConNavegador)(pageUrl, labelFiltro);
     return Array.isArray(res) ? res : [];
   } catch {
     return [];
   }
 }
-var ESPACIO_ENTRE_PETICIONES_MS = 400;
-var MAX_REINTENTOS_429 = 2;
-var ESPERA_MAXIMA_429_MS = 15e3;
+async function buscarConNavegadorExt(domain, query) {
+  try {
+    const res = await (0, import_sololatinoBrowser.buscarConNavegador)(domain, query);
+    return typeof res === "string" ? res : null;
+  } catch {
+    return null;
+  }
+}
+var ESPACIO_ENTRE_PETICIONES_MS = 2e3;
+var MAX_REINTENTOS_429 = 1;
+var ESPERA_MAXIMA_429_MS = 8e3;
 var CACHE_SERVIDORES_MS = 3 * 6e4;
 var siguienteTurno = 0;
+var ultimoCapitulo = null;
+var fallosConsecutivosCapitulo = 0;
 async function esperarTurno() {
   const ahora = Date.now();
   const turno = Math.max(ahora, siguienteTurno);
@@ -1486,13 +1585,40 @@ async function esperarTurno() {
 function dormir(ms) {
   return new Promise((listo) => setTimeout(listo, ms));
 }
+async function backoffSaltoCapitulo(idActual, pos) {
+  const clave = `${idActual}:${pos?.season ?? "x"}:${pos?.episode ?? "x"}`;
+  if (ultimoCapitulo === null) {
+    ultimoCapitulo = clave;
+    return;
+  }
+  if (clave === ultimoCapitulo) {
+    return;
+  }
+  const mPrev = ultimoCapitulo.match(/:(?:(\d+):(\d+))$/);
+  const mCurr = clave.match(/:(?:(\d+):(\d+))$/);
+  let esConsecutivo = false;
+  if (mPrev && mCurr) {
+    const temporadaPrev = Number(mPrev[1]);
+    const episodioPrev = Number(mPrev[2]);
+    const temporadaCurr = Number(mCurr[1]);
+    const episodioCurr = Number(mCurr[2]);
+    esConsecutivo = temporadaPrev === temporadaCurr && episodioCurr === episodioPrev + 1;
+  }
+  if (esConsecutivo) {
+    ultimoCapitulo = clave;
+    return;
+  }
+  const espera = Math.min(8e3, 1500 * (fallosConsecutivosCapitulo + 1));
+  if (espera > 0) await new Promise((listo) => setTimeout(listo, espera));
+  ultimoCapitulo = clave;
+}
 async function pedirUrlDelToken(domain, token, opts = {}) {
   let ultimo = null;
   for (let intento = 0; intento <= MAX_REINTENTOS_429; intento++) {
     await esperarTurno();
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 12e3);
+      const timer = setTimeout(() => controller.abort(), 8e3);
       try {
         const res = await fetch(`https://${domain}/api/player-url`, {
           method: "POST",
@@ -1620,6 +1746,7 @@ var sololatino = {
     const cacheKey = `sololatino:servers:${domain}:${id}:${pos?.season ?? "x"}:${pos?.episode ?? "x"}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
+    await backoffSaltoCapitulo(id, pos);
     return dedupe(cacheKey, async () => {
       const yaEsta = cacheGet(cacheKey);
       if (yaEsta) return yaEsta;
@@ -1632,30 +1759,40 @@ var sololatino = {
       if (id.includes("supernatural")) {
         candidatosUrl.push(this.playUrl(domain, id.replace("supernatural", "sobrenatural"), pos ?? null));
       }
-      for (const pageUrl2 of candidatosUrl) {
+      let pageUrlUsado = pageUrlBase;
+      for (const pageUrl of candidatosUrl) {
         try {
-          urls = await resolverConNavegador(pageUrl2, /fembed/i);
+          await esperarTurno();
+          urls = await resolverConNavegador(pageUrl, /fembed/i);
         } catch {
           urls = [];
         }
-        if (urls.length > 0) break;
-        try {
-          urls = await resolverConNavegador(pageUrl2, /(latino|vip|mixdrop|dood)/i);
-        } catch {
-          urls = [];
+        if (urls.length > 0) {
+          pageUrlUsado = pageUrl;
+          break;
         }
-        if (urls.length > 0) break;
-      }
-      if (urls.length === 0) {
         try {
+          await esperarTurno();
           urls = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
         } catch {
           urls = [];
         }
+        if (urls.length > 0) {
+          pageUrlUsado = pageUrl;
+          break;
+        }
       }
       if (urls.length === 0) {
         try {
-          const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
+          await esperarTurno();
+          urls = await resolverConNavegador(pageUrlUsado, /(latino|vip|mixdrop|dood)/i);
+        } catch {
+          urls = [];
+        }
+      }
+      if (urls.length === 0) {
+        try {
+          const html = await fetchText(pageUrlUsado, { referer: `https://${domain}/` });
           const $ = cheerio2.load(html);
           const csrf = $('meta[name="csrf-token"]').attr("content") || $('meta[name="X-CSRF-TOKEN"]').attr("content") || null;
           const testigos = [];
@@ -1669,7 +1806,7 @@ var sololatino = {
           const candidatos = latinos.length > 0 ? latinos : fembed.length > 0 ? fembed : testigos.filter((t) => !/principal|premium/i.test(t.label));
           for (const t of candidatos) {
             try {
-              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrl, csrf });
+              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrlUsado, csrf });
               if (data.url) urls.push(data.url);
             } catch (err) {
               if (err instanceof HttpError && err.status === 429) throw err;
@@ -1680,7 +1817,7 @@ var sololatino = {
       }
       const players = await Promise.all(
         urls.filter((url) => esEmbed69(url)).map(async (url) => {
-          const playerHtml = await fetchText(url, { referer: pageUrl }).catch(() => "");
+          const playerHtml = await fetchText(url, { referer: pageUrlUsado }).catch(() => "");
           return descifrarEmbed69(playerHtml);
         })
       );
@@ -1702,7 +1839,19 @@ var sololatino = {
           });
         }
       }
-      if (servers.length > 0) cacheSet(cacheKey, servers, CACHE_SERVIDORES_MS);
+      const sirvio = servers.length > 0;
+      const ttl = sirvio ? CACHE_SERVIDORES_MS : 3e4;
+      cacheSet(cacheKey, servers, ttl);
+      if (!sirvio) {
+        fallosConsecutivosCapitulo += 1;
+      } else {
+        fallosConsecutivosCapitulo = 0;
+      }
+      try {
+        await (0, import_sololatinoBrowser.cerrarSesion)();
+      } catch {
+      }
+      return servers;
       return servers;
     });
   },
@@ -1751,13 +1900,7 @@ var sololatino = {
   }
 };
 async function buscarConNavegadorDirecto(domain, query) {
-  try {
-    const m = __require("./sololatinoBrowser.cjs");
-    const res = await m.buscarConNavegador(domain, query);
-    return typeof res === "string" ? res : null;
-  } catch {
-    return null;
-  }
+  return buscarConNavegadorExt(domain, query);
 }
 function tipoMedia(type) {
   switch (cleanText(type).toLowerCase()) {
@@ -1936,209 +2079,6 @@ function nodosJsonLd(value) {
   return [obj];
 }
 
-// server/sources/pelispedia.ts
-import * as cheerio3 from "cheerio";
-function absoluteUrl(href, domain) {
-  const t = cleanText(href);
-  if (!t) return null;
-  if (/^https?:\/\//i.test(t)) return t;
-  return t.startsWith("/") ? `https://${domain}${t}` : `https://${domain}/${t}`;
-}
-function getKindFromUrl(id) {
-  if (id.startsWith("serie/")) return "series";
-  if (id.startsWith("pelicula/")) return "movie";
-  return null;
-}
-var pelispedia = {
-  meta: {
-    id: "pelispedia",
-    label: "Pelispedia",
-    accent: "#1caddd"
-  },
-  domains: ["pelispedia.mov"],
-  searchUrl(domain, query) {
-    return `https://${domain}/?s=${encodeURIComponent(query.trim())}`;
-  },
-  parseResults(html, domain) {
-    const $ = cheerio3.load(html);
-    const out = [];
-    $('a[href*="/pelicula/"], a[href*="/serie/"]').each((_, el) => {
-      const $a = $(el);
-      const href = cleanText($a.attr("href"));
-      if (!href) return;
-      const absolute = absoluteUrl(href, domain);
-      if (!absolute) return;
-      let slug = absolute.replace(/^https?:\/\/[^/]+/, "").replace(/^\/|\/$/g, "");
-      if (!slug || !(slug.startsWith("pelicula/") || slug.startsWith("serie/"))) return;
-      if (slug.includes("#")) return;
-      const title = cleanText($a.find(".title, .card-title, h3, h4").first().text()) || cleanText($a.attr("title")) || cleanText($a.find("img").first().attr("alt")) || slug.split("/").pop()?.replace(/-/g, " ") || "";
-      if (!title || isJunkTitle(title)) return;
-      const img = $a.find("img").first();
-      let poster = img.attr("data-src") ?? img.attr("src") ?? img.attr("data-lazy-src") ?? null;
-      if (poster && poster.startsWith("/")) poster = `https://${domain}${poster}`;
-      const kind = getKindFromUrl(slug);
-      out.push({
-        id: slug,
-        source: "pelispedia",
-        sourceLabel: "Pelispedia",
-        title,
-        url: absolute,
-        poster: isMissingPoster(poster) ? null : poster,
-        kind,
-        year: extractYear(title) ?? null,
-        rating: null,
-        episode: null,
-        note: null
-      });
-    });
-    return dedupeResults(out);
-  },
-  playUrl(domain, id, pos) {
-    if (pos && id.startsWith("serie/")) {
-      return `https://${domain}/${id}#s${pos.season}-e${pos.episode}`;
-    }
-    return `https://${domain}/${id}`;
-  },
-  parseDetail(html, domain, id) {
-    const $ = cheerio3.load(html);
-    const title = cleanText($("h1").first().text()) || cleanText($('meta[property="og:title"]').attr("content")) || id.split("/").pop()?.replace(/-/g, " ") || id;
-    let poster = $('meta[property="og:image"]').attr("content") || $("img.poster, .cover img").first().attr("src") || $("img").first().attr("src") || null;
-    if (poster && poster.startsWith("/")) poster = `https://${domain}${poster}`;
-    const synopsis = sinopsisUtil($('meta[property="og:description"]').attr("content")) || sinopsisUtil($('meta[name="description"]').attr("content")) || sinopsisUtil($(".description, .sinopsis, .plot").first().text());
-    const seasons = [];
-    const episodesMap = /* @__PURE__ */ new Map();
-    if (id.startsWith("serie/")) {
-      $("button[data-season-toggle]").each((_, el) => {
-        const seasonIndex = Number($(el).attr("data-season-index"));
-        if (!Number.isFinite(seasonIndex)) return;
-        const seasonNum = seasonIndex + 1;
-        if (!seasons.find((s) => s.season === seasonNum)) {
-          seasons.push({
-            season: seasonNum,
-            name: `Temporada ${seasonNum}`,
-            first: 1,
-            last: 0,
-            poster: null
-          });
-        }
-        $(`#season-${seasonIndex} a[data-season][data-episode]`).each((__, a) => {
-          const epSeason = Number($(a).attr("data-season"));
-          const epNum = Number($(a).attr("data-episode"));
-          if (!Number.isFinite(epSeason) || !Number.isFinite(epNum)) return;
-          const lista = episodesMap.get(epSeason) ?? [];
-          lista.push({
-            season: epSeason,
-            episode: epNum,
-            title: `Cap\xEDtulo ${epNum}`,
-            airDate: null,
-            runtime: null,
-            available: true
-          });
-          episodesMap.set(epSeason, lista);
-        });
-      });
-      for (const [s, list] of episodesMap) {
-        list.sort((a, b) => a.episode - b.episode);
-        const seasonInfo = seasons.find((x) => x.season === s);
-        if (seasonInfo) {
-          seasonInfo.first = list[0]?.episode ?? 1;
-          seasonInfo.last = list[list.length - 1]?.episode ?? 0;
-        }
-      }
-      seasons.sort((a, b) => a.season - b.season);
-    }
-    const porDefecto = primerCapitulo(seasons);
-    const capitulos = porDefecto ? episodesMap.get(porDefecto.season) ?? [] : [];
-    return {
-      source: "pelispedia",
-      id,
-      title,
-      url: `https://${domain}/${id}`,
-      poster: isMissingPoster(poster) ? null : poster,
-      synopsis,
-      year: extractYear(title) ?? null,
-      kind: getKindFromUrl(id),
-      servers: [],
-      episodes: id.startsWith("serie/") && seasons.length > 0 ? indiceDeSerie(seasons, capitulos, porDefecto) : null
-    };
-  },
-  async fetchServers(domain, id, pos) {
-    const pageUrl2 = this.playUrl(domain, id, pos ?? null);
-    let html = await fetchText(pageUrl2, { referer: `https://${domain}/` });
-    const $ = cheerio3.load(html);
-    let vidUrl = null;
-    $("iframe").each((_, el) => {
-      const src = $(el).attr("src") || "";
-      if (src.includes("/vidurl/")) {
-        vidUrl = src.startsWith("http") ? src : `https://${domain}${src}`;
-      }
-    });
-    if (!vidUrl) {
-      const match = html.match(/\/vidurl\/[^"']+/);
-      if (match) {
-        vidUrl = match[0].startsWith("http") ? match[0] : `https://${domain}${match[0]}`;
-      }
-    }
-    if (!vidUrl) return [];
-    try {
-      const vidHtml = await fetchText(vidUrl, { referer: pageUrl2 });
-      const $2 = cheerio3.load(vidHtml);
-      const match = vidHtml.match(/let dataLink = (\[.*?\]);/s);
-      if (match) {
-        try {
-          return [{
-            id: "pelispedia-1",
-            label: "Reproductor",
-            embedUrl: vidUrl,
-            method: "dom"
-          }];
-        } catch {
-        }
-      }
-    } catch {
-    }
-    return [{
-      id: "pelispedia-1",
-      label: "Reproductor",
-      embedUrl: vidUrl,
-      method: "dom"
-    }];
-  },
-  async fetchEpisodes(domain, id, season) {
-    if (!id.startsWith("serie/")) return [];
-    const html = await fetchText(`https://${domain}/${id}`, { referer: `https://${domain}/` });
-    const $ = cheerio3.load(html);
-    const episodes = [];
-    const seasonIndex = season - 1;
-    $(`#season-${seasonIndex} a[data-season][data-episode]`).each((_, a) => {
-      const epSeason = Number($(a).attr("data-season"));
-      const epNum = Number($(a).attr("data-episode"));
-      if (!Number.isFinite(epSeason) || !Number.isFinite(epNum)) return;
-      if (epSeason !== season) return;
-      episodes.push({
-        season: epSeason,
-        episode: epNum,
-        title: `Cap\xEDtulo ${epNum}`,
-        airDate: null,
-        runtime: null,
-        available: true
-      });
-    });
-    episodes.sort((a, b) => a.episode - b.episode);
-    return episodes;
-  },
-  async fetchHome(domain, limit) {
-    const html = await fetchText(`https://${domain}/`, { timeoutMs: 15e3 }).catch(() => "");
-    const results = this.parseResults(html, domain).slice(0, limit);
-    return results;
-  },
-  async fetchByGenre(domain, genre) {
-    const url = `https://${domain}/peliculas?genero=${encodeURIComponent(genre.slug)}`;
-    const html = await fetchText(url, { referer: `https://${domain}/`, timeoutMs: 15e3 }).catch(() => "");
-    return this.parseResults(html, domain);
-  }
-};
-
 // server/settings.ts
 import { existsSync as existsSync2, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path2 from "node:path";
@@ -2148,7 +2088,7 @@ var ultimoError = null;
 function empty() {
   return { version: 1, disabledSources: [] };
 }
-function load4() {
+function load3() {
   if (cache) return cache;
   try {
     if (existsSync2(FILE)) {
@@ -2182,16 +2122,16 @@ function settingsStatus() {
   return { file: FILE, error: ultimoError };
 }
 function isSourceEnabled(id) {
-  return !load4().disabledSources.includes(id);
+  return !load3().disabledSources.includes(id);
 }
 function setSourceEnabled(id, enabled) {
-  const actual = load4();
+  const actual = load3();
   const sinEsta = actual.disabledSources.filter((otro) => otro !== id);
   save({ ...actual, disabledSources: enabled ? sinEsta : [...sinEsta, id] });
 }
 
 // server/sources/index.ts
-var SOURCES = [pelisplushd, cuevana3gs, lamovie, sololatino, pelispedia];
+var SOURCES = [pelisplushd, cuevana3gs, lamovie, sololatino];
 var SOURCE_MAP = new Map(SOURCES.map((s) => [s.meta.id, s]));
 function getSource(id) {
   return SOURCE_MAP.get(id);
@@ -3150,7 +3090,7 @@ async function resolveStream(embedUrl, opts = {}) {
   const fin = Date.now() + budgetMs;
   const restante = () => Math.max(800, fin - Date.now());
   if (deadHops.has(embedUrl)) {
-    onTrace?.(`saltos ya conocido como muerto: ${hostOf3(embedUrl)}`);
+    onTrace?.(`saltos ya conocido como muerto: ${hostOf2(embedUrl)}`);
     return null;
   }
   if (classifyStream(embedUrl) === "embed") {
@@ -3196,7 +3136,7 @@ async function resolveStream(embedUrl, opts = {}) {
   }
   const nested = extraction.candidates.find((c) => c.method === "dom-iframe" && !isNoiseHost(c.embedUrl));
   if (nested && nested.embedUrl !== embedUrl && !visited.has(nested.embedUrl)) {
-    const destino = hostOf3(nested.embedUrl);
+    const destino = hostOf2(nested.embedUrl);
     onTrace?.(`siguiendo el iframe a ${destino}`);
     visited.add(nested.embedUrl);
     const developed = await resolveStream(nested.embedUrl, {
@@ -3221,7 +3161,7 @@ async function resolveStream(embedUrl, opts = {}) {
     false
   );
 }
-function hostOf3(url) {
+function hostOf2(url) {
   try {
     return new URL(url).hostname;
   } catch {
@@ -3694,7 +3634,7 @@ var ultimoError2 = null;
 function empty2() {
   return { version: 1, history: [], favorites: [] };
 }
-function load5() {
+function load4() {
   if (cache2) return cache2;
   try {
     if (existsSync3(FILE3)) {
@@ -3776,23 +3716,23 @@ function sanitizeWatched(input) {
   return Object.fromEntries(entradas);
 }
 function readLibrary() {
-  const lib = load5();
+  const lib = load4();
   return { history: lib.history, favorites: lib.favorites };
 }
 function recordHistory(entry) {
-  const lib = load5();
+  const lib = load4();
   const history = [entry, ...lib.history.filter((e) => e.key !== entry.key)].slice(0, MAX_HISTORY);
   save2({ ...lib, history });
   return history;
 }
 function forgetHistory(key) {
-  const lib = load5();
+  const lib = load4();
   const history = key ? lib.history.filter((e) => e.key !== key) : [];
   save2({ ...lib, history });
   return history;
 }
 function toggleFavorite(entry) {
-  const lib = load5();
+  const lib = load4();
   const yaEsta = lib.favorites.some((e) => e.key === entry.key);
   const favorites = yaEsta ? lib.favorites.filter((e) => e.key !== entry.key) : [entry, ...lib.favorites];
   save2({ ...lib, favorites });

@@ -26,29 +26,13 @@ import { descifrarEmbed69, esEmbed69, nombreIdioma } from './embed69.js';
 import { esVidhide, resolverVidhide } from './hosters.js';
 
 // Resolucion por navegador de /api/player-url (detras de Cloudflare).
-function getResolver() {
-  // Usar el modulo incluido por esbuild desde la variable global del bundle
-  if (typeof require_sololatinoBrowser === 'function') {
-    return require_sololatinoBrowser();
-  }
-  if (typeof require_sololatinoBrowser2 === 'function') {
-    return require_sololatinoBrowser2();
-  }
-  if (typeof require_sololatinoBrowser3 === 'function') {
-    return require_sololatinoBrowser3();
-  }
-  // fallback a require del archivo cjs (para versiones anteriores)
-  try { return require('./sololatinoBrowser.cjs'); } catch {}
-  try { return require('../sololatinoBrowser.cjs'); } catch {}
-  try { return require('../../sololatinoBrowser.cjs'); } catch {}
-  try { return require('./resources/sololatinoBrowser.cjs'); } catch {}
-  throw new Error('sololatinoBrowser.cjs not found');
-}
+// Import directo del modulo CJS: esbuild lo embebe correctamente tanto
+// en el bundle ESM como en contextos que admiten require().
+import { resolverConNavegador as browserResolver, buscarConNavegador as browserSearch, cerrarSesion as cerrarSesionNavegador } from '../sololatinoBrowser.cjs';
 
 async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promise<string[]> {
   try {
-    const m = getResolver();
-    const res = await m.resolverConNavegador(pageUrl, labelFiltro);
+    const res = await browserResolver(pageUrl, labelFiltro);
     return Array.isArray(res) ? res : [];
   } catch {
     return [];
@@ -57,15 +41,12 @@ async function resolverConNavegador(pageUrl: string, labelFiltro: RegExp): Promi
 
 async function buscarConNavegadorExt(domain: string, query: string): Promise<string | null> {
   try {
-    const m = getResolver();
-    if (typeof m.buscarConNavegador === 'function') {
-      const res = await m.buscarConNavegador(domain, query);
-      return typeof res === 'string' ? res : null;
-    }
-  } catch {}
-  return null;
+    const res = await browserSearch(domain, query);
+    return typeof res === 'string' ? res : null;
+  } catch {
+    return null;
+  }
 }
-
 
 // ----------------------------------------------------------------------
 // Limite de peticiones del resolvedor de servidores
@@ -81,13 +62,17 @@ async function buscarConNavegadorExt(domain: string, query: string): Promise<str
 // LATINO es el unico util), una espera minima entre peticiones y reintento
 // respetando lo que pida la fuente.
 
-const ESPACIO_ENTRE_PETICIONES_MS = 400;
-const MAX_REINTENTOS_429 = 2;
-const ESPERA_MAXIMA_429_MS = 15_000;
+const ESPACIO_ENTRE_PETICIONES_MS = 2000;
+const MAX_REINTENTOS_429 = 1;
+const ESPERA_MAXIMA_429_MS = 8_000;
 const CACHE_SERVIDORES_MS = 3 * 60_000;
 
 /** Turno global: el limite es de la fuente, no de un capitulo. */
 let siguienteTurno = 0;
+
+/** Último capítulo consultado: se usa para detectar saltos no consecutivos. */
+let ultimoCapitulo: string | null = null;
+let fallosConsecutivosCapitulo = 0;
 
 async function esperarTurno(): Promise<void> {
   const ahora = Date.now();
@@ -99,6 +84,49 @@ async function esperarTurno(): Promise<void> {
 
 function dormir(ms: number): Promise<void> {
   return new Promise((listo) => setTimeout(listo, ms));
+}
+
+/**
+ * Backoff progresivo entre saltos de capitulo no consecutivos.
+ * Si el usuario salta de un capitulo a otro que no es el siguiente,
+ * esperamos un poco mas para no disparar el rate-limit de Cloudflare.
+ */
+async function backoffSaltoCapitulo(idActual: string, pos: { season?: number; episode?: number } | null): Promise<void> {
+  const clave = `${idActual}:${pos?.season ?? 'x'}:${pos?.episode ?? 'x'}`;
+
+  if (ultimoCapitulo === null) {
+    // Primera peticion: sin backoff
+    ultimoCapitulo = clave;
+    return;
+  }
+
+  if (clave === ultimoCapitulo) {
+    // Mismo capitulo reintentado: usar caché negativa corta, no backoff
+    return;
+  }
+
+  // Detectar si es capitulo consecutivo (mismo temporada, episodio + 1)
+  const mPrev = ultimoCapitulo.match(/:(?:(\d+):(\d+))$/);
+  const mCurr = clave.match(/:(?:(\d+):(\d+))$/);
+  let esConsecutivo = false;
+  if (mPrev && mCurr) {
+    const temporadaPrev = Number(mPrev[1]);
+    const episodioPrev = Number(mPrev[2]);
+    const temporadaCurr = Number(mCurr[1]);
+    const episodioCurr = Number(mCurr[2]);
+    esConsecutivo = temporadaPrev === temporadaCurr && episodioCurr === episodioPrev + 1;
+  }
+
+  if (esConsecutivo) {
+    // Capitulo consecutivo: backoff corto
+    ultimoCapitulo = clave;
+    return;
+  }
+
+  // Salto a capitulo distinto: aplicar backoff progresivo
+  const espera = Math.min(8000, 1500 * (fallosConsecutivosCapitulo + 1));
+  if (espera > 0) await new Promise((listo) => setTimeout(listo, espera));
+  ultimoCapitulo = clave;
 }
 
 /**
@@ -118,7 +146,7 @@ async function pedirUrlDelToken(
     await esperarTurno();
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 12_000);
+      const timer = setTimeout(() => controller.abort(), 8_000);
       try {
         const res = await fetch(`https://${domain}/api/player-url`, {
           method: 'POST',
@@ -301,6 +329,10 @@ export const sololatino: SourceAdapter = {
     const cached = cacheGet<PlaybackServer[]>(cacheKey);
     if (cached) return cached;
 
+    // Backoff al saltar a un capitulo distinto (no consecutivo) para no
+    // disparar el rate-limit de Cloudflare.
+    await backoffSaltoCapitulo(id, pos);
+
     return dedupe(cacheKey, async () => {
       // Otra peticion identica pudo terminar mientras esta esperaba turno.
       const yaEsta = cacheGet<PlaybackServer[]>(cacheKey);
@@ -316,30 +348,34 @@ export const sololatino: SourceAdapter = {
         candidatosUrl.push(this.playUrl(domain, id.replace('supernatural', 'sobrenatural'), pos ?? null));
       }
 
+      let pageUrlUsado = pageUrlBase;
       for (const pageUrl of candidatosUrl) {
         try {
+          await esperarTurno();
           urls = await resolverConNavegador(pageUrl, /fembed/i);
         } catch {
           urls = [];
         }
-        if (urls.length > 0) break;
+        if (urls.length > 0) { pageUrlUsado = pageUrl; break; }
         try {
+          await esperarTurno();
           urls = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
         } catch {
           urls = [];
         }
-        if (urls.length > 0) break;
+        if (urls.length > 0) { pageUrlUsado = pageUrl; break; }
       }
       if (urls.length === 0) {
         try {
-          urls = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
+          await esperarTurno();
+          urls = await resolverConNavegador(pageUrlUsado, /(latino|vip|mixdrop|dood)/i);
         } catch {
           urls = [];
         }
       }
       if (urls.length === 0) {
         try {
-          const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
+          const html = await fetchText(pageUrlUsado, { referer: `https://${domain}/` });
           const $ = cheerio.load(html);
 
           const csrf =
@@ -365,7 +401,7 @@ export const sololatino: SourceAdapter = {
 
           for (const t of candidatos) {
             try {
-              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrl, csrf });
+              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrlUsado, csrf });
               if (data.url) urls.push(data.url);
             } catch (err) {
               // Con 429 no tiene sentido seguir: los demas botones tambien fallaran
@@ -384,7 +420,7 @@ export const sololatino: SourceAdapter = {
         urls
           .filter((url) => esEmbed69(url))
           .map(async (url) => {
-            const playerHtml = await fetchText(url, { referer: pageUrl }).catch(() => '');
+            const playerHtml = await fetchText(url, { referer: pageUrlUsado }).catch(() => '');
             return descifrarEmbed69(playerHtml);
           }),
       );
@@ -414,9 +450,26 @@ export const sololatino: SourceAdapter = {
         }
       }
 
-      // Solo se cachea lo que sirvio. Un fallo puntual no debe quedarse pegado
-      // tres minutos: justo despues de un 429 el reintento suele funcionar.
-      if (servers.length > 0) cacheSet(cacheKey, servers, CACHE_SERVIDORES_MS);
+      const sirvio = servers.length > 0;
+      // Cache positiva: 3 minutos. Cache negativa (fallo/bloqueo): 30 segundos
+      // para no martillar la fuente al saltar entre capitulos.
+      const ttl = sirvio ? CACHE_SERVIDORES_MS : 30_000;
+      cacheSet(cacheKey, servers, ttl);
+
+      // Seguimiento de fallos consecutivos para backoff progresivo
+      if (!sirvio) {
+        fallosConsecutivosCapitulo += 1;
+      } else {
+        fallosConsecutivosCapitulo = 0;
+      }
+
+      // Cerrar sesion del navegador tras cada capitulo: el proximo capitulo
+      // empezara con cookies limpias para evitar que Cloudflare marque la sesion
+      // despues de varias peticiones seguidas.
+      try { await cerrarSesionNavegador(); } catch {}
+
+      return servers;
+
       return servers;
     });
   },
@@ -474,13 +527,7 @@ export const sololatino: SourceAdapter = {
 };
 
 async function buscarConNavegadorDirecto(domain: string, query: string): Promise<string | null> {
-  try {
-    const m: any = require('./sololatinoBrowser.cjs');
-    const res = await m.buscarConNavegador(domain, query);
-    return typeof res === 'string' ? res : null;
-  } catch {
-    return null;
-  }
+  return buscarConNavegadorExt(domain, query);
 }
 
 // ----------------------------------------------------------------------

@@ -76,7 +76,7 @@ Node local y lo apaga cuando la aplicación se cierra.
 | PelisPlusHD | `pelisplushd` | HTML + navegador (URL calculada en JS ofuscado) |
 | Cuevana3 | `cuevana3` | API `/wp-api/v1` |
 | LaMovie | `lamovie` | API `/wp-api/v1` |
-| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) — **en reparación, no funciona de manera adecuada por el momento** |
+| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) + navegador headless para `/api/player-url` |
 
 > Las fuentes **rotan de dominio con frecuencia**. Miso resuelve en tiempo de
 > ejecución cuál de sus dominios conocidos está vivo, así que el dominio real no
@@ -293,6 +293,9 @@ scripts/          Comprobaciones y utilidades de desarrollo
 - **Algunos hosts bloquean peticiones automatizadas** (respuesta 403). Miso no
   desactiva la seguridad del navegador ni sortea protecciones; en esos casos
   intenta otro servidor o deja el enlace para abrir la página original.
+- **SoloLatino aplica rate-limiting por IP.** Al saltar entre capítulos no
+  consecutivos puede tardar unos segundos extra (backoff progresivo) mientras la
+  fuente deja de limitar. Si persiste el fallo, cierra y vuelve a abrir la app.
 - La disponibilidad depende por completo de webs de terceros.
 
 ## Aviso legal
