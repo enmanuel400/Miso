@@ -2,11 +2,47 @@ const CHROME = '/home/demon0/.cache/ms-playwright/chromium-1243/chrome-linux64/c
 let browserPromise = null;
 let puppeteerModule = null;
 let pageActual = null;
+let userAgentIndex = -1;
 let fallosConsecutivos = 0;
 const MAX_FALLOS_ANTES_RECREAR = 3;
 
+/** User-agents reales de Chrome en diferentes plataformas para rotar. */
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+];
+
+function siguienteUserAgent() {
+  userAgentIndex = (userAgentIndex + 1) % USER_AGENTS.length;
+  return USER_AGENTS[userAgentIndex];
+}
+
 function getChromeArgs() {
-  return ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'];
+  return [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--disable-site-isolation-trials',
+    '--no-first-run',
+    '--disable-extensions',
+    '--disable-default-apps',
+    '--disable-translate',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--window-size=1920,1080',
+    '--start-maximized',
+    '--disable-web-security',
+    '--disable-features=site-per-process,IsolateOrigins',
+    '--disable-features=Translate',
+    '--disable-ipc-flooding-protection',
+    '--enable-features=NetworkService,NetworkServiceInProcess',
+  ];
 }
 
 async function closeBrowser() {
@@ -25,15 +61,12 @@ async function closeBrowser() {
 }
 
 /**
- * Cierra la página actual (sesión) para forzar cookies limpias en el próximo capítulo.
+ * Cierra la página actual y el navegador para forzar una sesión completamente
+ * limpia en el próximo capítulo: nuevas cookies, nuevo user-agent, sin cache.
  * Esto evita que Cloudflare marque la misma sesión tras varios capítulos.
  */
 async function cerrarSesion() {
-  if (pageActual) {
-    try { await pageActual.close(); } catch {}
-    pageActual = null;
-  }
-  browserPromise = null; // fuerzar nuevo browser la próxima vez
+  closeBrowser();
 }
 
 async function getBrowser() {
@@ -51,12 +84,67 @@ async function getBrowser() {
   return browserPromise;
 }
 
+/**
+ * Limpia cookies, localStorage y sessionStorage de la página para que no quede
+ * rastro de la sesión anterior entre capítulos.
+ */
+async function limpiarSesion(page) {
+  try {
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+  } catch {}
+  try {
+    const client = await page.createCDPSession();
+    await client.send('Network.clearBrowserCookies');
+    await client.send('Storage.clearDataForOrigin', {
+      origin: '*',
+      storageTypes: 'all',
+    });
+    await client.detach();
+  } catch {}
+}
+
 async function getPage() {
   const browser = await getBrowser();
   if (!pageActual || pageActual.isClosed()) {
     pageActual = await browser.newPage();
-    await pageActual.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-    await pageActual.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7' });
+    const ua = siguienteUserAgent();
+    await pageActual.setUserAgent(ua);
+    await pageActual.setExtraHTTPHeaders({
+      'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    });
+    await limpiarSesion(pageActual);
+
+    // Ocultar señales de automatización para que Cloudflare no detecte Puppeteer
+    await pageActual.evaluateOnNewDocument(() => {
+      // Eliminar navigator.webdriver
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      // Simular plugins de Chrome real
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5],
+      });
+      // Simular idiomas reales
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['es-ES', 'es', 'en'],
+      });
+      // Simular chrome real
+      window.chrome = {
+        runtime: {},
+        app: { isInstalled: false },
+      };
+      // Permisos simulados
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(parameters)
+      );
+    });
   }
   return pageActual;
 }
