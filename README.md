@@ -76,11 +76,21 @@ Node local y lo apaga cuando la aplicación se cierra.
 | PelisPlusHD | `pelisplushd` | HTML + navegador (URL calculada en JS ofuscado) |
 | Cuevana3 | `cuevana3` | API `/wp-api/v1` |
 | LaMovie | `lamovie` | API `/wp-api/v1` |
-| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) + navegador headless para `/api/player-url` |
+| SoloLatino | `sololatino` | API `/api/search/suggest` + HTML (JSON-LD) + navegador headless (Puppeteer) para `/api/player-url` |
 
 > Las fuentes **rotan de dominio con frecuencia**. Miso resuelve en tiempo de
 > ejecución cuál de sus dominios conocidos está vivo, así que el dominio real no
 > se fija en el código.
+
+### Condiciones de uso: SoloLatino
+
+SoloLatino usa un **navegador headless (Puppeteer)** para resolver los servidores de reproducción, porque sus enlaces de vídeo están detrás de un POST cifrado (`/api/player-url`) protegido por Cloudflare. Esto implica lo siguiente:
+
+- **Extracción en dos pasos**: primero se busca el título en el autocompletado JSON (`/api/search/suggest`), y luego se carga la página del capítulo en el navegador para obtener los `data-player-token` y convertirlos en URLs reales de hosters (streamwish, voe, vidhide).
+- **Rate-limiting por IP**: SoloLatino limita el número de peticiones al endpoint de reproductor. Si saltas entre capítulos no consecutivos, puede que la fuente devuelva 0 servidores durante unos segundos. Miso aplica un **backoff progresivo** y una **caché negativa de 30 segundos** para no martillar la fuente.
+- **Sesión limpia por capítulo**: Miso cierra el navegador tras cada capítulo, así el siguiente empieza con cookies nuevas y reduce la probabilidad de que Cloudflare marque la sesión como automatizada.
+- **No se resuelven captchas**: si Cloudflare presenta un desafío (captcha, challenge de "verifica que eres humano"), Miso **no puede sortearlo** y devolverá 0 servidores para ese capítulo. Cierra y vuelve a abrir la app, o espera un momento antes de reintentar.
+- **Entorno recomendado**: desde una conexión residencial (fibra de casa, móvil) funciona mejor que desde servidores o VPS, cuyas IPs son más frecuentemente marcadas por Cloudflare.
 
 Miso **no aloja ni distribuye contenido**: es un cliente que consulta sitios de
 terceros y reproduce lo que estos ya publican.
@@ -293,9 +303,17 @@ scripts/          Comprobaciones y utilidades de desarrollo
 - **Algunos hosts bloquean peticiones automatizadas** (respuesta 403). Miso no
   desactiva la seguridad del navegador ni sortea protecciones; en esos casos
   intenta otro servidor o deja el enlace para abrir la página original.
-- **SoloLatino aplica rate-limiting por IP.** Al saltar entre capítulos no
-  consecutivos puede tardar unos segundos extra (backoff progresivo) mientras la
-  fuente deja de limitar. Si persiste el fallo, cierra y vuelve a abrir la app.
+- **SoloLatino depende de un navegador headless** para resolver los servidores
+  de reproducción, ya que sus enlaces están detrás de un endpoint protegido por
+  Cloudflare (`/api/player-url`). Esto implica:
+  - Al saltar a un capítulo no consecutivo, la fuente puede tardar unos
+    segundos extra en responder (backoff progresivo). Si persiste el fallo,
+    cierra y vuelve a abrir la app.
+  - Si Cloudflare presenta un captcha o challenge, Miso no puede resolverlo y
+    devolverá 0 servidores para ese capítulo. Reintenta más tarde o desde otra
+    conexión de red.
+  - Funciona mejor desde una conexión residencial (fibra de casa, móvil) que
+    desde servidores o VPS, cuyas IPs son más frecuentemente marcadas.
 - La disponibilidad depende por completo de webs de terceros.
 
 ## Aviso legal
