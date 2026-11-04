@@ -462,7 +462,7 @@ export const pelisplushd: SourceAdapter = {
 
     const html = await fetchText(urlDeCapitulo(domain, id, pos), {
       referer: `https://${domain}/${id}`,
-      timeoutMs: 20_000,
+      timeoutMs: 10_000,
     });
     return servidoresDe(cheerio.load(html));
   },
@@ -488,7 +488,7 @@ export const pelisplushd: SourceAdapter = {
 
     const html = await fetchText(`https://${domain}/${id}`, {
       referer: `https://${domain}/`,
-      timeoutMs: 20_000,
+      timeoutMs: 10_000,
     });
     const { episodes } = capitulosDe(cheerio.load(html));
     return capitulosDeLaTemporada(episodes, season);

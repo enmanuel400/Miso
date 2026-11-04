@@ -38,8 +38,28 @@ async function searchOne(source: SourceAdapter, query: string): Promise<{
 
   try {
     const domain = await resolveDomain(source, probeBudget);
-    const url = source.searchUrl(domain, query);
     const rest = PER_SOURCE_TIMEOUT - probeBudget - (Date.now() - started);
+
+    // Algunas fuentes (como SoloLatino) tienen su propio metodo de busqueda
+    // que usa navegador headless para sortear protecciones. Si existe, usarlo.
+    // Estas fuentes necesitan mas presupuesto porque el navegador tarda en
+    // arrancar y cargar la pagina.
+    const searchFn = (source as { search?: (q: string, d: string) => Promise<SearchResult[]> }).search;
+    if (searchFn) {
+      const navegadorTimeout = Math.max(8000, rest);
+      const results = await Promise.race([
+        searchFn(query, domain),
+        new Promise<SearchResult[]>((_, rej) =>
+          setTimeout(() => rej(new Error('timeout')), navegadorTimeout),
+        ),
+      ]);
+      return {
+        results,
+        status: { state: 'ok', count: results.length, ms: Date.now() - started },
+      };
+    }
+
+    const url = source.searchUrl(domain, query);
     const html = await fetchText(url, { timeoutMs: Math.max(500, rest) });
     const results = source.parseResults(html, domain);
 

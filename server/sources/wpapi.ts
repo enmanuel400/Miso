@@ -21,7 +21,7 @@ import {
   sinAnio,
   sinopsisUtil,
 } from './shared.js';
-import { fetchText } from '../http.js';
+import { fetchJson } from '../http.js';
 import { cacheGet, cacheSet } from '../cache.js';
 
 /**
@@ -187,8 +187,11 @@ function etiquetaServidor(embed: WpEmbed): string {
 }
 
 async function pedirJson<T>(url: string, domain: string): Promise<WpRespuesta<T>> {
-  const body = await fetchText(url, { referer: `https://${domain}/`, timeoutMs: 20_000 });
-  return JSON.parse(body) as WpRespuesta<T>;
+  return fetchJson<WpRespuesta<T>>(url, null, {
+    referer: `https://${domain}/`,
+    timeoutMs: 20_000,
+    method: 'GET',
+  });
 }
 
 /** Convierte un post de la API en un resultado de busqueda/inicio. */

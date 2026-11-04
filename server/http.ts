@@ -164,10 +164,15 @@ function retryAfterDe(res: Response): number | null {
   return null;
 }
 
+/** Endpoints que se comportan como API y exigen cabeceras de AJAX. */
+const RE_API = /\/api\/|\/wp-api\/|\/search\?/;
+
 export async function fetchText(url: string, opts: FetchOptions = {}): Promise<string> {
   const { timeoutMs = 20_000, referer, cookie } = opts;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const esApi = RE_API.test(url);
 
   try {
     const res = await fetch(url, {
@@ -175,8 +180,9 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<s
       redirect: 'follow',
       headers: {
         'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Accept: esApi ? 'application/json, text/plain, */*' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': ACCEPT_LANGUAGE,
+        ...(esApi ? { 'X-Requested-With': 'XMLHttpRequest' } : {}),
         ...(referer ? { Referer: referer } : {}),
         ...(cookie ? { Cookie: cookie } : {}),
       },
