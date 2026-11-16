@@ -361,12 +361,27 @@ export const sololatino: SourceAdapter = {
       // Nunca se acepta player.pelisserieshoy.com (Premium, no funciona).
       // ------------------------------------------------------------------
       let pageUrlUsado = pageUrlBase;
+      let navegadorUsado = false;
       for (const pageUrl of candidatosUrl) {
         try {
           const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
 
-          // Si Cloudflare sirve un challenge, no hay tokens que extraer.
+          // Si Cloudflare sirve un challenge, no hay tokens que extraer con
+          // HTTP directo. Probamos el navegador como fallback para este
+          // mismo candidato antes de seguir con el siguiente.
           if (/cloudflare|challenge|just-a-moment|verify-you-are-human/i.test(html)) {
+            try {
+              await esperarTurno();
+              const urlsNav = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
+              if (urlsNav.length > 0) {
+                urls = urlsNav;
+                pageUrlUsado = pageUrl;
+                navegadorUsado = true;
+                break;
+              }
+            } catch {
+              // El navegador tambien fallo, probamos el siguiente candidato.
+            }
             continue;
           }
 
@@ -416,10 +431,22 @@ export const sololatino: SourceAdapter = {
         }
       }
 
-      // Si el HTTP directo no obtuvo servidores, no hay fallback de navegador:
-      // el navegador Puppeteer es bloqueado por Cloudflare y el click en el
-      // boton LATINO no dispara la peticion a /api/player-url de forma fiable.
-      // Devolvemos lo que tengamos (puede ser vacio).
+      // Si ni HTTP directo ni el navegador obtuvieron servidores, no hay
+      // nada mas que hacer: devolvemos lo que tengamos (puede ser vacio).
+      if (urls.length === 0 && !navegadorUsado) {
+        // Último recurso: probar el navegador con el primer candidato aunque
+        // fetchText no haya dado challenge (por si acaso).
+        try {
+          await esperarTurno();
+          const urlsNav = await resolverConNavegador(pageUrlUsado, /(latino|vip|mixdrop|dood)/i);
+          if (urlsNav.length > 0) {
+            urls = urlsNav;
+            navegadorUsado = true;
+          }
+        } catch {
+          urls = urls;
+        }
+      }
 
       // Los embeds se bajan en paralelo: ya no pasan por el limite de la API.
       const players = await Promise.all(
