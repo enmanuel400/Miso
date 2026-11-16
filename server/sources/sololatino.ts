@@ -62,7 +62,7 @@ async function buscarConNavegadorExt(domain: string, query: string): Promise<str
 // LATINO es el unico util), una espera minima entre peticiones y reintento
 // respetando lo que pida la fuente.
 
-const ESPACIO_ENTRE_PETICIONES_MS = 2000;
+const ESPACIO_ENTRE_PETICIONES_MS = 500;
 const MAX_REINTENTOS_429 = 1;
 const ESPERA_MAXIMA_429_MS = 8_000;
 const CACHE_SERVIDORES_MS = 3 * 60_000;
@@ -158,6 +158,7 @@ async function pedirUrlDelToken(
             'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
+            'Origin': `https://${domain}`,
             ...(opts.referer ? { Referer: opts.referer } : {}),
             ...(opts.csrf ? { 'X-CSRF-TOKEN': opts.csrf } : {}),
             ...(opts.cookie ? { Cookie: opts.cookie } : {}),
@@ -348,34 +349,25 @@ export const sololatino: SourceAdapter = {
         candidatosUrl.push(this.playUrl(domain, id.replace('supernatural', 'sobrenatural'), pos ?? null));
       }
 
+      // ------------------------------------------------------------------
+      // Estrategia 1: fallback HTTP directo (sin navegador).
+      //
+      // El endpoint /api/player-url responde directamente a peticiones HTTP
+      // con el token y el CSRF extraídos del HTML del capítulo. Es la vía más
+      // rápida y fiable porque no depende de que Puppeteer supere la
+      // protección de Cloudflare.
+      // ------------------------------------------------------------------
       let pageUrlUsado = pageUrlBase;
+      let httpTuvoExito = false;
       for (const pageUrl of candidatosUrl) {
         try {
-          await esperarTurno();
-          urls = await resolverConNavegador(pageUrl, /fembed/i);
-        } catch {
-          urls = [];
-        }
-        if (urls.length > 0) { pageUrlUsado = pageUrl; break; }
-        try {
-          await esperarTurno();
-          urls = await resolverConNavegador(pageUrl, /(latino|vip|mixdrop|dood)/i);
-        } catch {
-          urls = [];
-        }
-        if (urls.length > 0) { pageUrlUsado = pageUrl; break; }
-      }
-      if (urls.length === 0) {
-        try {
-          await esperarTurno();
-          urls = await resolverConNavegador(pageUrlUsado, /(latino|vip|mixdrop|dood)/i);
-        } catch {
-          urls = [];
-        }
-      }
-      if (urls.length === 0) {
-        try {
-          const html = await fetchText(pageUrlUsado, { referer: `https://${domain}/` });
+          const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
+          // Si Cloudflare sirve un challenge, no hay tokens que extraer.
+          // Saltamos directamente al navegador con este mismo candidato.
+          if (/cloudflare|challenge|just-a-moment|verify-you-are-human/i.test(html)) {
+            pageUrlUsado = pageUrl;
+            break;
+          }
           const $ = cheerio.load(html);
 
           const csrf =
@@ -401,17 +393,36 @@ export const sololatino: SourceAdapter = {
 
           for (const t of candidatos) {
             try {
-              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrlUsado, csrf });
-              if (data.url) urls.push(data.url);
+              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrl, csrf });
+              if (data.url) {
+                urls.push(data.url);
+                pageUrlUsado = pageUrl;
+                httpTuvoExito = true;
+                break;
+              }
             } catch (err) {
-              // Con 429 no tiene sentido seguir: los demas botones tambien fallaran
-              // y solo alargarian el bloqueo. Se propaga para poder explicarlo.
               if (err instanceof HttpError && err.status === 429) throw err;
-              // Un boton roto no invalida los demas.
             }
           }
+          if (httpTuvoExito) break;
         } catch {
-          // Ignorar
+          // Ignorar y probar el siguiente candidato o el navegador
+        }
+      }
+
+      // ------------------------------------------------------------------
+      // Estrategia 2: resolvedor con navegador (Puppeteer).
+      //
+      // Solo se usa si el fallback HTTP directo no obtuvo servidores.
+      // Se intenta una sola vez con el primer candidato para no perder
+      // tiempo si Cloudflare también bloquea al navegador.
+      // ------------------------------------------------------------------
+      if (!httpTuvoExito && urls.length === 0) {
+        try {
+          await esperarTurno();
+          urls = await resolverConNavegador(pageUrlUsado, /(latino|vip|mixdrop|dood)/i);
+        } catch {
+          urls = [];
         }
       }
 
@@ -467,8 +478,6 @@ export const sololatino: SourceAdapter = {
       // empezara con cookies limpias para evitar que Cloudflare marque la sesion
       // despues de varias peticiones seguidas.
       try { await cerrarSesionNavegador(); } catch {}
-
-      return servers;
 
       return servers;
     });

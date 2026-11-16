@@ -216,6 +216,21 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
       return [];
     }
 
+    // Esperar a que Cloudflare resuelva su desafío automático si aparece.
+    // Esperamos hasta 6 segundos a que la página cargue completamente y
+    // desaparezca cualquier pantalla de "Just a moment" o challenge.
+    await new Promise((r) => setTimeout(r, 2000));
+    const cloudflareStart = Date.now();
+    while (Date.now() - cloudflareStart < 6000) {
+      const url = page.url();
+      const title = await page.title().catch(() => '');
+      const body = await page.content().catch(() => '');
+      if (!/cloudflare|challenge|just-a-moment|verify-you-are-human/i.test(url + ' ' + title + ' ' + body)) {
+        break; // La página cargó sin challenge de Cloudflare
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
     await page.waitForSelector('[data-player-token]', { timeout: 5000 }).catch(() => {});
     await new Promise((r) => setTimeout(r, 3000));
 
