@@ -227,6 +227,15 @@ export async function resolveStream(
 
   visited.add(embedUrl);
 
+  // Nunca intentar resolver player.pelisserieshoy.com (Premium, requiere
+  // cuenta VIP). Incluso si algun servidor llega con ese dominio por cualquier
+  // camino, se rechaza de inmediato sin abrir el navegador.
+  if (/player\.pelisserieshoy\.com/i.test(embedUrl)) {
+    onTrace?.(`dominio Premium bloqueado: ${hostOf(embedUrl)}`);
+    deadHops.add(embedUrl);
+    return null;
+  }
+
   // Una URL que YA es un stream final no se resuelve: abrir un navegador para
   // leer algo que ya sabemos que es un `.m3u8` (o un `.mp4`) solo gastaria
   // segundos en volver a encontrarlo. El adaptador de sololatino, por ejemplo,
