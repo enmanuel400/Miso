@@ -60,11 +60,6 @@ async function closeBrowser() {
   fallosConsecutivos = 0;
 }
 
-/**
- * Cierra la página actual y el navegador para forzar una sesión completamente
- * limpia en el próximo capítulo: nuevas cookies, nuevo user-agent, sin cache.
- * Esto evita que Cloudflare marque la misma sesión tras varios capítulos.
- */
 async function cerrarSesion() {
   closeBrowser();
 }
@@ -84,10 +79,6 @@ async function getBrowser() {
   return browserPromise;
 }
 
-/**
- * Limpia cookies, localStorage y sessionStorage de la página para que no quede
- * rastro de la sesión anterior entre capítulos.
- */
 async function limpiarSesion(page) {
   try {
     await page.evaluate(() => {
@@ -122,22 +113,17 @@ async function getPage() {
 
     // Ocultar señales de automatización para que Cloudflare no detecte Puppeteer
     await pageActual.evaluateOnNewDocument(() => {
-      // Eliminar navigator.webdriver
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      // Simular plugins de Chrome real
       Object.defineProperty(navigator, 'plugins', {
         get: () => [1, 2, 3, 4, 5],
       });
-      // Simular idiomas reales
       Object.defineProperty(navigator, 'languages', {
         get: () => ['es-ES', 'es', 'en'],
       });
-      // Simular chrome real
       window.chrome = {
         runtime: {},
         app: { isInstalled: false },
       };
-      // Permisos simulados
       const originalQuery = window.navigator.permissions.query;
       window.navigator.permissions.query = (parameters) => (
         parameters.name === 'notifications'
@@ -167,6 +153,55 @@ function esPaginaBloqueada(url, status, body) {
   return false;
 }
 
+/**
+ * Extrae las URLs resueltas directamente del DOM.
+ *
+ * El sitio ya resuelve los testigos en el lado del cliente y los guarda en
+ * el atributo `data-resolved-url` de cada botón. Esto nos permite obtener
+ * las URLs reales sin hacer click en ningún botón ni interceptar respuestas
+ * de red, evitando que el navegador seleccione el botón equivocado
+ * (Principal/Premium en lugar de LATINO).
+ */
+async function extraerUrlsDelDom(page) {
+  return page.evaluate(() => {
+    const btns = [...document.querySelectorAll('[data-player-token]')];
+    if (btns.length === 0) return [];
+
+    // Separar por prioridad: LATINO primero, luego fembed, luego otros
+    // Nunca incluir player.pelisserieshoy.com (Premium/Principal, no funciona)
+    const latinos = [];
+    const fembed = [];
+    const otros = [];
+
+    for (const b of btns) {
+      const label = (b.textContent || '').toLowerCase();
+      if (label.includes('principal') || label.includes('premium')) continue;
+
+      const resolvedUrl = b.getAttribute('data-resolved-url');
+      if (!resolvedUrl) continue;
+
+      // Descartar player.pelisserieshoy.com
+      if (/player\.pelisserieshoy\.com/i.test(resolvedUrl)) continue;
+
+      const entry = { label: b.textContent?.trim() || 'Servidor', url: resolvedUrl };
+
+      if (/latino/i.test(label)) latinos.push(entry);
+      else if (/fembed/i.test(label)) fembed.push(entry);
+      else otros.push(entry);
+    }
+
+    return [...latinos, ...fembed, ...otros];
+  });
+}
+
+/**
+ * Resolvedor con navegador (Puppeteer).
+ *
+ * Extrae las URLs resueltas directamente del DOM (atributo
+ * data-resolved-url) en lugar de hacer click en botones. Esto evita que
+ * el navegador seleccione el botón equivocado (Principal en lugar de
+ * LATINO) y elimina la dependencia de interceptar respuestas de red.
+ */
 async function resolverConNavegador(pageUrl, labelFiltro) {
   let page;
   try {
@@ -175,23 +210,6 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
     registrarFallo();
     return [];
   }
-
-  const urls = [];
-  const seen = new Set();
-  page.on('response', async (resp) => {
-    try {
-      const u = resp.url();
-      if (u.includes('/api/player-url')) {
-        const json = await resp.json().catch(() => null);
-        if (json && json.url && !seen.has(json.url)) {
-          // Descartar player.pelisserieshoy.com (Premium/Principal, no sirve sin cuenta VIP)
-          if (/player\.pelisserieshoy\.com/i.test(json.url)) return;
-          seen.add(json.url);
-          urls.push(json.url);
-        }
-      }
-    } catch {}
-  });
 
   let bloqueado = false;
   page.on('response', async (resp) => {
@@ -205,7 +223,7 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
   });
 
   try {
-    // Navegar a la URL del capítulo en la misma página (mantiene cookies de sesión)
+    // Navegar a la URL del capítulo
     try {
       await Promise.race([
         page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }),
@@ -219,8 +237,6 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
     }
 
     // Esperar a que Cloudflare resuelva su desafío automático si aparece.
-    // Esperamos hasta 6 segundos a que la página cargue completamente y
-    // desaparezca cualquier pantalla de "Just a moment" o challenge.
     await new Promise((r) => setTimeout(r, 2000));
     const cloudflareStart = Date.now();
     while (Date.now() - cloudflareStart < 6000) {
@@ -228,111 +244,20 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
       const title = await page.title().catch(() => '');
       const body = await page.content().catch(() => '');
       if (!/cloudflare|challenge|just-a-moment|verify-you-are-human/i.test(url + ' ' + title + ' ' + body)) {
-        break; // La página cargó sin challenge de Cloudflare
+        break;
       }
       await new Promise((r) => setTimeout(r, 500));
     }
 
-    await page.waitForSelector('[data-player-token]', { timeout: 5000 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 3000));
+    // Esperar a que los botones [data-player-token] aparezcan en el DOM
+    await page.waitForSelector('[data-player-token]', { timeout: 8000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2000));
 
-    const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
-    const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : 'i';
-
-    // Debug: listar todos los botones [data-player-token]
-    const debugBtns = await page.evaluate(() => {
-      const btns = [...document.querySelectorAll('[data-player-token]')];
-      return btns.map((b) => ({
-        label: (b.textContent || '').trim(),
-        token: (b.getAttribute('data-player-token') || '').slice(0, 30),
-      }));
-    });
-    console.error("[sololatinoBrowser] botones encontrados:", debugBtns);
-
-    try {
-      await page.evaluate((src, flags) => {
-        const doc = globalThis.document;
-        if (!doc) return;
-        const re = src ? new RegExp(src, flags || 'i') : null;
-        const btns = [...doc.querySelectorAll('[data-player-token]')];
-        if (btns.length === 0) return;
-        // 1. Prioridad absoluta: botón LATINO
-        for (const b of btns) {
-          const t = (b.textContent || '').toLowerCase();
-          if (t.includes('principal') || t.includes('premium')) continue;
-          if (/latino/i.test(b.textContent || '')) {
-            console.error("[sololatinoBrowser] click LATINO:", b.textContent);
-            try { b.click(); return; } catch {}
-          }
-        }
-        // 2. Si no hay LATINO, probar vip/mixdrop/dood que matcheen el filtro
-        for (const b of btns) {
-          const t = (b.textContent || '').toLowerCase();
-          if (t.includes('principal') || t.includes('premium')) continue;
-          if (re && !re.test(b.textContent || '')) continue;
-          try { b.click(); return; } catch {}
-        }
-        // 3. Último recurso: cualquier botón que no sea Principal/Premium
-        for (const b of btns) {
-          const t = (b.textContent || '').toLowerCase();
-          if (t.includes('principal') || t.includes('premium')) continue;
-          try { b.click(); return; } catch {}
-        }
-      }, reStr, reFlags);
-    } catch {}
-
-    const start = Date.now();
-    while (Date.now() - start < 5000 && urls.length === 0) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    if (urls.length === 0) {
-      const extra = await page.evaluate(async (src, flags) => {
-        const res = [];
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content;
-        const re = src ? new RegExp(src, flags || 'i') : null;
-        const btns = [...document.querySelectorAll('[data-player-token]')];
-        // Prioridad: LATINO primero, luego vip/mixdrop/dood, nunca Principal/Premium
-        let list = btns.filter((b) => {
-          const t = (b.textContent||'').toLowerCase();
-          if (t.includes('principal')||t.includes('premium')) return false;
-          return /latino/i.test(b.textContent||'');
-        });
-        if (list.length === 0) {
-          list = btns.filter((b) => {
-            const t = (b.textContent||'').toLowerCase();
-            if (t.includes('principal')||t.includes('premium')) return false;
-            if (re) return re.test(b.textContent||'');
-            return /fembed|latino|vip|mixdrop|dood/i.test(b.textContent||'');
-          });
-        }
-        if (list.length === 0) list = btns.filter((b) => !/(principal|premium)/i.test(b.textContent||''));
-        for (const b of list) {
-          const tok = b.getAttribute('data-player-token');
-          if (!tok) continue;
-          try {
-            const headers = {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'};
-            if (csrf) headers['X-CSRF-TOKEN'] = csrf;
-            const r = await fetch('/api/player-url', {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({t: tok}),
-              credentials: 'include'
-            });
-            if (r.ok) {
-              const j = await r.json().catch(()=>null);
-              if (j && j.url && !/player\.pelisserieshoy\.com/i.test(j.url)) { res.push(j.url); break; }
-            }
-          } catch {}
-        }
-        return res;
-      }, reStr, reFlags).catch(()=>[]);
-      for (const u of extra) if (!seen.has(u)) urls.push(u);
-    }
+    // Extraer URLs resueltas directamente del DOM
+    const urls = await extraerUrlsDelDom(page);
 
     if (bloqueado || urls.length === 0) {
       registrarFallo();
-      // Si Cloudflare bloqueó esta sesión, cerrarla para que el próximo capítulo empiece limpio
       if (bloqueado) {
         try { await page.close(); } catch {}
         pageActual = null;
