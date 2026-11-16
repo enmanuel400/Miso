@@ -395,6 +395,8 @@ export const sololatino: SourceAdapter = {
             try {
               const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrl, csrf });
               if (data.url) {
+                // Descartar player.pelisserieshoy.com (Premium/Principal, no sirve sin cuenta VIP)
+                if (/player\.pelisserieshoy\.com/i.test(data.url)) continue;
                 urls.push(data.url);
                 pageUrlUsado = pageUrl;
                 httpTuvoExito = true;

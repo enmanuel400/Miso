@@ -184,6 +184,8 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
       if (u.includes('/api/player-url')) {
         const json = await resp.json().catch(() => null);
         if (json && json.url && !seen.has(json.url)) {
+          // Descartar player.pelisserieshoy.com (Premium/Principal, no sirve sin cuenta VIP)
+          if (/player\.pelisserieshoy\.com/i.test(json.url)) return;
           seen.add(json.url);
           urls.push(json.url);
         }
@@ -244,12 +246,22 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
         const re = src ? new RegExp(src, flags || 'i') : null;
         const btns = [...doc.querySelectorAll('[data-player-token]')];
         if (btns.length === 0) return;
+        // 1. Prioridad absoluta: botón LATINO
+        for (const b of btns) {
+          const t = (b.textContent || '').toLowerCase();
+          if (t.includes('principal') || t.includes('premium')) continue;
+          if (/latino/i.test(b.textContent || '')) {
+            try { b.click(); return; } catch {}
+          }
+        }
+        // 2. Si no hay LATINO, probar vip/mixdrop/dood que matcheen el filtro
         for (const b of btns) {
           const t = (b.textContent || '').toLowerCase();
           if (t.includes('principal') || t.includes('premium')) continue;
           if (re && !re.test(b.textContent || '')) continue;
           try { b.click(); return; } catch {}
         }
+        // 3. Último recurso: cualquier botón que no sea Principal/Premium
         for (const b of btns) {
           const t = (b.textContent || '').toLowerCase();
           if (t.includes('principal') || t.includes('premium')) continue;
@@ -269,12 +281,20 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content;
         const re = src ? new RegExp(src, flags || 'i') : null;
         const btns = [...document.querySelectorAll('[data-player-token]')];
+        // Prioridad: LATINO primero, luego vip/mixdrop/dood, nunca Principal/Premium
         let list = btns.filter((b) => {
           const t = (b.textContent||'').toLowerCase();
           if (t.includes('principal')||t.includes('premium')) return false;
-          if (re) return re.test(b.textContent||'');
-          return /fembed|latino|vip|mixdrop|dood/i.test(b.textContent||'');
+          return /latino/i.test(b.textContent||'');
         });
+        if (list.length === 0) {
+          list = btns.filter((b) => {
+            const t = (b.textContent||'').toLowerCase();
+            if (t.includes('principal')||t.includes('premium')) return false;
+            if (re) return re.test(b.textContent||'');
+            return /fembed|latino|vip|mixdrop|dood/i.test(b.textContent||'');
+          });
+        }
         if (list.length === 0) list = btns.filter((b) => !/(principal|premium)/i.test(b.textContent||''));
         for (const b of list) {
           const tok = b.getAttribute('data-player-token');
@@ -290,7 +310,7 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
             });
             if (r.ok) {
               const j = await r.json().catch(()=>null);
-              if (j && j.url) { res.push(j.url); break; }
+              if (j && j.url && !/player\.pelisserieshoy\.com/i.test(j.url)) { res.push(j.url); break; }
             }
           } catch {}
         }
