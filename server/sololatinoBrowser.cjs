@@ -239,6 +239,16 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
     const reStr = labelFiltro && labelFiltro.source ? labelFiltro.source : null;
     const reFlags = labelFiltro && labelFiltro.flags ? labelFiltro.flags : 'i';
 
+    // Debug: listar todos los botones [data-player-token]
+    const debugBtns = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('[data-player-token]')];
+      return btns.map((b) => ({
+        label: (b.textContent || '').trim(),
+        token: (b.getAttribute('data-player-token') || '').slice(0, 30),
+      }));
+    });
+    console.error("[sololatinoBrowser] botones encontrados:", debugBtns);
+
     try {
       await page.evaluate((src, flags) => {
         const doc = globalThis.document;
@@ -251,6 +261,7 @@ async function resolverConNavegador(pageUrl, labelFiltro) {
           const t = (b.textContent || '').toLowerCase();
           if (t.includes('principal') || t.includes('premium')) continue;
           if (/latino/i.test(b.textContent || '')) {
+            console.error("[sololatinoBrowser] click LATINO:", b.textContent);
             try { b.click(); return; } catch {}
           }
         }

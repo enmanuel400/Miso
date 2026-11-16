@@ -350,24 +350,26 @@ export const sololatino: SourceAdapter = {
       }
 
       // ------------------------------------------------------------------
-      // Estrategia 1: fallback HTTP directo (sin navegador).
+      // Estrategia: fallback HTTP directo (sin navegador).
       //
-      // El endpoint /api/player-url responde directamente a peticiones HTTP
-      // con el token y el CSRF extraídos del HTML del capítulo. Es la vía más
-      // rápida y fiable porque no depende de que Puppeteer supere la
-      // protección de Cloudflare.
+      // Extraemos los data-player-token del HTML del capitulo y llamamos a
+      // /api/player-url directamente desde Node. Es la vía más rápida y
+      // fiable porque no depende de que Puppeteer supere Cloudflare ni de
+      // que el click en el boton LATINO se ejecute correctamente.
+      //
+      // Prioridad: LATINO (da embed69.org) > fembed > otros.
+      // Nunca se acepta player.pelisserieshoy.com (Premium, no funciona).
       // ------------------------------------------------------------------
       let pageUrlUsado = pageUrlBase;
-      let httpTuvoExito = false;
       for (const pageUrl of candidatosUrl) {
         try {
           const html = await fetchText(pageUrl, { referer: `https://${domain}/` });
+
           // Si Cloudflare sirve un challenge, no hay tokens que extraer.
-          // Saltamos directamente al navegador con este mismo candidato.
           if (/cloudflare|challenge|just-a-moment|verify-you-are-human/i.test(html)) {
-            pageUrlUsado = pageUrl;
-            break;
+            continue;
           }
+
           const $ = cheerio.load(html);
 
           const csrf =
@@ -381,52 +383,43 @@ export const sololatino: SourceAdapter = {
             testigos.push({ label: cleanText($(el).text()) || 'Servidor', token });
           });
 
-          // "⭐ Principal" apunta a player.pelisserieshoy.com (se descarta).
+          // Orden de prioridad: LATINO primero, luego fembed, luego el resto
+          // (sin Principal/Premium que apuntan a pelisserieshoy.com).
           const latinos = testigos.filter((t) => /latino/i.test(t.label));
           const fembed = testigos.filter((t) => /fembed/i.test(t.label));
-          const candidatos =
-            latinos.length > 0
-              ? latinos
-              : fembed.length > 0
-                ? fembed
-                : testigos.filter((t) => !/principal|premium/i.test(t.label));
+          const otros = testigos.filter(
+            (t) => !/latino|fembed|principal|premium/i.test(t.label)
+          );
+          const candidatosOrdenados = [...latinos, ...fembed, ...otros];
 
-          for (const t of candidatos) {
+          for (const t of candidatosOrdenados) {
             try {
-              const data = await pedirUrlDelToken(domain, t.token, { referer: pageUrl, csrf });
+              const data = await pedirUrlDelToken(domain, t.token, {
+                referer: pageUrl,
+                csrf,
+              });
               if (data.url) {
-                // Descartar player.pelisserieshoy.com (Premium/Principal, no sirve sin cuenta VIP)
+                // Descartar player.pelisserieshoy.com (Premium/Principal).
                 if (/player\.pelisserieshoy\.com/i.test(data.url)) continue;
                 urls.push(data.url);
                 pageUrlUsado = pageUrl;
-                httpTuvoExito = true;
                 break;
               }
             } catch (err) {
               if (err instanceof HttpError && err.status === 429) throw err;
+              // Un token roto no invalida los demas.
             }
           }
-          if (httpTuvoExito) break;
+          if (urls.length > 0) break;
         } catch {
-          // Ignorar y probar el siguiente candidato o el navegador
+          // Ignorar y probar el siguiente candidato.
         }
       }
 
-      // ------------------------------------------------------------------
-      // Estrategia 2: resolvedor con navegador (Puppeteer).
-      //
-      // Solo se usa si el fallback HTTP directo no obtuvo servidores.
-      // Se intenta una sola vez con el primer candidato para no perder
-      // tiempo si Cloudflare también bloquea al navegador.
-      // ------------------------------------------------------------------
-      if (!httpTuvoExito && urls.length === 0) {
-        try {
-          await esperarTurno();
-          urls = await resolverConNavegador(pageUrlUsado, /(latino|vip|mixdrop|dood)/i);
-        } catch {
-          urls = [];
-        }
-      }
+      // Si el HTTP directo no obtuvo servidores, no hay fallback de navegador:
+      // el navegador Puppeteer es bloqueado por Cloudflare y el click en el
+      // boton LATINO no dispara la peticion a /api/player-url de forma fiable.
+      // Devolvemos lo que tengamos (puede ser vacio).
 
       // Los embeds se bajan en paralelo: ya no pasan por el limite de la API.
       const players = await Promise.all(
